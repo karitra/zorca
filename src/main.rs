@@ -1,53 +1,18 @@
-extern crate clap;
 extern crate cocaine;
 extern crate futures;
+
 #[macro_use]
 extern crate serde_derive;
+extern crate clap;
 
 use clap::{App, Arg};
-use cocaine::{Core, Service};
-use cocaine::service::{Storage, Unicorn};
 
-use std::collections::HashMap;
+mod samples;
 
-#[derive(Deserialize, Debug)]
-struct StateRecord {
-    workers: i32,
-    profile: String
-}
-
-type State = HashMap<String, StateRecord>;
-
-
-fn read_from_unicron(path: &str) {
-    println!("path: {}", path);
-
-    let mut core = Core::new().unwrap();
-    let unicorn = Unicorn::new(Service::new("unicorn", &core.handle()));
-
-    let future = unicorn.get::<State>(path);
-
-    match core.run(future) {
-        Ok((Some(data), version)) =>
-            println!("version: {}, data: {:?}", version, data),
-        Ok((None, _)) => println!("no data"),
-        Err(error) => println!("error: {:?}", error),
-    }
-}
-
-fn read_from_storage(collection: &str, key: &str) {
-    let mut core = Core::new().unwrap();
-    let storage = Storage::new(Service::new("storage", &core.handle()));
-
-    println!("collection: {} key: {}", collection, key);
-
-    let future = storage.read(collection, key);
-
-    match core.run(future) {
-        Ok(data) => println!("data: {:?}", data),
-        Err(error) => println!("error: {:?}", error),
-    }
-}
+use samples::{
+    read_from_storage,
+    read_from_unicron
+};
 
 fn main() {
     let options = App::new("Cocaine test app")
