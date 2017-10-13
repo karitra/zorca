@@ -1,6 +1,9 @@
 use cocaine::{Core, Service};
 use cocaine::service::{Storage, Unicorn};
 
+use futures::future::{Future};
+use futures::{Stream};
+
 use std::collections::HashMap;
 
 
@@ -14,8 +17,6 @@ pub type State = HashMap<String, StateRecord>;
 
 
 pub fn read_from_unicron(path: &str) -> Option<State> {
-    println!("path: {}", path);
-
     let mut core = Core::new().unwrap();
     let unicorn = Unicorn::new(Service::new("unicorn", &core.handle()));
 
@@ -55,4 +56,27 @@ pub fn read_from_storage(collection: &str, key: &str) -> Option<String> {
             None
         }
     }
+}
+
+pub fn listen_unicorn(path: &str) {
+    let mut core = Core::new().unwrap();
+    let unicorn = Unicorn::new(Service::new("unicorn", &core.handle()));
+
+    let reactor = unicorn
+        .subscribe::<State,_>(path, None)
+        .and_then(|(_, stream)| {
+            println!("subscribed @ {}", path);
+
+            stream.for_each(|(data, version)| {
+                if let Some(data) = data {
+                    println!("{}: {:?}", version, data);
+                } else {
+                    println!("no data in node");
+                }
+
+                Ok(())
+            })
+    });
+
+    core.run(reactor).unwrap();
 }

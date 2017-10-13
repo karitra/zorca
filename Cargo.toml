@@ -7,6 +7,6 @@ authors = ["Alex Karev <karev.alexandre@gmail.com>"]
 [dependencies]
 cocaine = { git="https://github.com/3Hren/cocaine-framework-rust", branch="master"}
 futures = "0.1"
-serde = "1.0.15"
-serde_derive = "1.0.15"
-clap = "2.26.2"
+serde = "1.0"
+serde_derive = "1.0"
+clap = "~2.26.2"

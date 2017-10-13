@@ -11,7 +11,8 @@ mod samples;
 
 use samples::{
     read_from_storage,
-    read_from_unicron
+    read_from_unicron,
+    listen_unicorn
 };
 
 fn main() {
@@ -27,5 +28,6 @@ fn main() {
     read_from_storage("store", "test.txt");
     if let Some(path) = options.value_of("unicorn_path") {
         read_from_unicron(path);
+        listen_unicorn(path);
     }
 }
