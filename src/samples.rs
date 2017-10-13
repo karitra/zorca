@@ -60,23 +60,25 @@ pub fn read_from_storage(collection: &str, key: &str) -> Option<String> {
 
 pub fn listen_unicorn(path: &str) {
     let mut core = Core::new().unwrap();
-    let unicorn = Unicorn::new(Service::new("unicorn", &core.handle()));
 
-    let reactor = unicorn
+    let reactor = Unicorn::new(Service::new("unicorn", &core.handle()))
         .subscribe::<State,_>(path, None)
         .and_then(|(_, stream)| {
-            println!("subscribed @ {}", path);
+            println!("subscribed to {}", path);
 
             stream.for_each(|(data, version)| {
+
+                println!("in stream::for_each");
+
                 if let Some(data) = data {
-                    println!("{}: {:?}", version, data);
+                    println!("\t{}: {:?}", version, data);
                 } else {
-                    println!("no data in node");
+                    println!("\tno data in node");
                 }
 
                 Ok(())
             })
-    });
+        });
 
     core.run(reactor).unwrap();
 }

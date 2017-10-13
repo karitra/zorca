@@ -1,5 +1,5 @@
 ## Orchestrator health checker
 
-Cocaine Rust-lang framework exercise.
+Cocaine Rust-lang framework exercise(s).
 
 **TODO**
