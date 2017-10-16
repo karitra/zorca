@@ -1,8 +1,10 @@
-use cocaine::{Core, Service};
+use cocaine::{Core, Error, Service};
 use cocaine::service::{Storage, Unicorn};
 
 use futures::future::{Future};
-use futures::{Stream};
+use futures::Stream;
+
+use tokio_core::reactor::Handle;
 
 use std::collections::HashMap;
 
@@ -58,27 +60,26 @@ pub fn read_from_storage(collection: &str, key: &str) -> Option<String> {
     }
 }
 
-pub fn listen_unicorn(path: &str) {
-    let mut core = Core::new().unwrap();
+pub fn unicorn_subscribe(service_name: &str, path: &str, handle: &Handle)
+    -> Box<Future<Item=(), Error=Error>>
+{
+    let subsciption = Unicorn::new(Service::new(service_name.to_string(), handle))
+        .subscribe::<State,_>(path, None);
 
-    let reactor = Unicorn::new(Service::new("unicorn", &core.handle()))
-        .subscribe::<State,_>(path, None)
-        .and_then(|(_, stream)| {
-            println!("subscribed to {}", path);
+    Box::new(
+        subsciption.and_then(|(close, stream)| {
 
             stream.for_each(|(data, version)| {
-
-                println!("in stream::for_each");
-
                 if let Some(data) = data {
                     println!("\t{}: {:?}", version, data);
                 } else {
                     println!("\tno data in node");
                 }
-
+                Ok(())
+            }).and_then(|_| {
+                drop(close);
                 Ok(())
             })
-        });
-
-    core.run(reactor).unwrap();
+        })
+    )
 }
