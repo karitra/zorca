@@ -15,7 +15,6 @@ use tokio_core::reactor::Core;
 mod samples;
 
 use samples::{
-    read_from_storage,
     read_from_unicron,
     unicorn_subscribe
 };

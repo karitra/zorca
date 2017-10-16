@@ -61,14 +61,15 @@ pub fn read_from_storage(collection: &str, key: &str) -> Option<String> {
 }
 
 pub fn unicorn_subscribe(service_name: &str, path: &str, handle: &Handle)
+    // impl Future<Item=(), Error=Error>
     -> Box<Future<Item=(), Error=Error>>
 {
+    // TODO: secure token support
     let subsciption = Unicorn::new(Service::new(service_name.to_string(), handle))
         .subscribe::<State,_>(path, None);
 
     Box::new(
         subsciption.and_then(|(close, stream)| {
-
             stream.for_each(|(data, version)| {
                 if let Some(data) = data {
                     println!("\t{}: {:?}", version, data);
