@@ -1,10 +1,12 @@
+//
+// TODO: promiscouse mode - return Option(Ticket).
+//
 use cocaine::service::Tvm;
 use cocaine::{Error, Service};
 use cocaine::service::tvm::Grant;
 
 use futures;
 use futures::future::{Future};
-use tokio_core::reactor::Handle;
 
 use time;
 
@@ -21,7 +23,6 @@ pub struct TvmProxy {
 }
 
 impl TvmProxy {
-
     pub fn new(config: &Config, service: Service) -> Result<TvmProxy, String> {
         match config.secure {
             Some(ref secure) => {
@@ -35,6 +36,15 @@ impl TvmProxy {
             },
             None => Err("config secure section must exist".to_string())
         }
+    }
+
+    pub fn ticket_as_header(&mut self) -> Box<Future<Item = String, Error = Error>> {
+        let ty = self.secure.get_mod();
+        let header = self.ticket().and_then(move |token| {
+            Ok(format!("{} {}", ty, token))
+        });
+
+        Box::new(header)
     }
 
     pub fn ticket(&mut self) -> Box<Future<Item = String, Error = Error>> {
@@ -59,18 +69,18 @@ impl TvmProxy {
 
     fn update_and_get_cached(&self) -> Box<Future<Item = String, Error = Error>> {
         let mut cached_ticket = Rc::clone(&self.cached_ticket);
-        Box::new(
-            self.fetch_ticket().and_then(move |token| {
-                cached_ticket = Rc::new(Some(token.clone()));
-                Ok(token)
-            })
-        )
+        let future = self.fetch_ticket().and_then(move |token| {
+            cached_ticket = Rc::new(Some(token.clone()));
+            Ok(token)
+        });
+
+        Box::new(future)
     }
 
     fn fetch_ticket(&self) -> Box<Future<Item = String, Error = Error>> {
         let grant: Grant = self.secure.grant.clone().unwrap_or(Grant::ClientCredentials);
-        Box::new(
-            self.tvm.ticket(self.secure.client_id as u32, &self.secure.client_secret, &grant)
-        )
+        let future = self.tvm.ticket(self.secure.client_id as u32, &self.secure.client_secret, &grant);
+
+        Box::new(future)
     }
 }

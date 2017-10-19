@@ -12,13 +12,19 @@ extern crate yaml_rust;
 
 extern crate clap;
 extern crate time;
+extern crate serde;
 
-use cocaine::Service;
+use cocaine::{Service, Error};
+use cocaine::hpack::RawHeader;
 
 use clap::{App, Arg};
 
 use tokio_core::reactor::Core;
+
 use futures::Future;
+use futures::sync::mpsc;
+use futures::Stream;
+
 
 mod samples;
 mod config;
@@ -29,7 +35,8 @@ use samples::{
     // read_from_unicron,
     unicorn_subscribe,
     unicorn_kids_subscribe,
-    unicorn_get_node
+    unicorn_get_node,
+    State
 };
 
 use config::Config;
@@ -62,33 +69,54 @@ fn main() {
         .get_matches();
 
     let config = Config::new_from_default_files();
-    println!("get config {:?}", config);
-    println!("is ticket option present {}", options.is_present("ticket"));
 
     if let Some(path) = options.value_of("unicorn_path") {
         println!("Starting unicorn patch");
         let mut core = Core::new().unwrap();
 
-        let future1 = unicorn_subscribe("unicorn", path, &core.handle());
+        let future1 = unicorn_subscribe::<State>("unicorn", path, &core.handle());
 
         if let Some(node) = options.value_of("node") {
-            let future2 = unicorn_get_node("unicorn", node, &core.handle());
+            let future2 = unicorn_get_node::<String>("unicorn", node, &core.handle());
             core.run(future1.join(future2)).unwrap();
         } else {
             core.run(future1).unwrap();
         }
-    } else if let Some(path) = options.value_of("kids_path") {
-        let mut core = Core::new().unwrap();
-        let future = unicorn_kids_subscribe("unicorn", path, &core.handle());
-        core.run(future).unwrap();
-    } else if options.is_present("ticket") {
+    }
+
+    if options.is_present("ticket") {
         let mut core = Core::new().unwrap();
         let tvm = Service::new("tvm", &core.handle());
         println!("creating proxy");
+
         if let Ok(mut proxy) = TvmProxy::new(&config, tvm) {
-            println!("trying to fecth ticket...");
-            if let Ok(ticket) = core.run(proxy.ticket()) {
-                println!("got it {}", ticket);
+            println!("trying to subscribe securely...");
+
+            if let Some(path) = options.value_of("kids_path") {
+                type Msg = (String, Vec<String>);
+                let (tx, rx) = mpsc::unbounded::<Msg>();
+
+                let handle = core.handle();
+
+                let subscibe_future = proxy.ticket_as_header().and_then(|header| {
+                    let headers = vec![
+                        RawHeader::new("authorization".as_bytes(), header.into_bytes())
+                    ];
+
+                    println!("subscribing to path: {}", path);
+                    unicorn_kids_subscribe(Service::new("unicorn", &handle), path, Some(headers), handle, tx)
+                });
+
+                let nodes_future = rx.for_each(|nodes| {
+                    println!("got from queue {} item(s)", nodes.1.len());
+                    Ok(())
+                });
+
+                core.handle().spawn(nodes_future);
+                match core.run(subscibe_future) {
+                    Ok(_) => println!("processing done"),
+                    Err(err) => println!("Got an error {:?}", err)
+                };
             }
         }
     }

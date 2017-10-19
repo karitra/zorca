@@ -91,6 +91,14 @@ impl Config {
     }
 }
 
+
+impl Secure {
+    pub fn get_mod(&self) -> String {
+        self.md.clone()
+    }
+}
+
+
 impl Builder {
     fn new() -> Builder {
         Builder{ config: Config::new_with_defaults() }
