@@ -5,13 +5,13 @@ description = "Cocaine orchestrator (aka Orca) monitoring service"
 authors = ["Alex Karev <karev.alexandre@gmail.com>"]
 
 [dependencies]
-cocaine = {
-    git="https://github.com/3Hren/cocaine-framework-rust",
-    branch="master"
-}
+#cocaine = {git="https://github.com/3Hren/cocaine-framework-rust", branch="master"}
+cocaine = {path="/home/karapuz/prj/ya/cocaine/cocaine-framework-rust"}
 tokio-core = "0.1"
 futures = "0.1.14"
 hyper = "0.11.2"
 serde = "1.0"
 serde_derive = "1.0"
+yaml-rust = "0.3"
 clap = "~2.26.2"
+time = "0.1"

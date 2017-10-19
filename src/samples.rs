@@ -1,5 +1,6 @@
 use cocaine::{Core, Error, Service};
-use cocaine::service::{Storage, Unicorn};
+use cocaine::service::{Storage, Unicorn, Tvm};
+use cocaine::service::tvm::Grant;
 
 use futures::future::{Future};
 use futures::Stream;
@@ -58,6 +59,56 @@ pub fn read_from_storage(collection: &str, key: &str) -> Option<String> {
             None
         }
     }
+}
+
+pub fn get_ticket(service_name: &str, id: u32, secret: &str, grant: &Grant, handle: &Handle)
+    -> Box<Future<Item=String, Error=Error>>
+{
+    Box::new(
+        Tvm::new(Service::new(service_name.to_string(), handle))
+        .ticket(id, secret, grant)
+    )
+}
+
+pub fn unicorn_kids_subscribe(service_name: &str, path: &str, handle: &Handle)
+    -> Box<Future<Item=(), Error=Error>>
+{
+    let subscription = Unicorn::new(Service::new(service_name.to_string(), handle))
+        .children_subscribe(path);
+
+    Box::new(
+        subscription.and_then(|(tx, stream)| {
+            println!("subscribed");
+            stream.for_each(|(version, nodes)| {
+                for node in nodes {
+                    println!("{}: {:?}", version, node);
+                }
+                Ok(())
+            }).and_then(|_| {
+                drop(tx);
+                Ok(())
+            })
+        })
+    )
+}
+
+pub fn unicorn_get_node(service_name: &str, path: &str, handle: &Handle)
+    -> Box<Future<Item=Option<String>, Error=Error>>
+{
+    let future = Unicorn::new(Service::new(service_name.to_string(), handle))
+        .get::<String>(path);
+
+    Box::new(
+        future.and_then(|(maybe_data, _version)| {
+            if let Some(data) = maybe_data {
+                println!("content: {}", data);
+                Ok(Some(data))
+            } else {
+                println!("content if node is empty");
+                Ok(None)
+            }
+        })
+    )
 }
 
 pub fn unicorn_subscribe(service_name: &str, path: &str, handle: &Handle)
