@@ -1,6 +1,3 @@
-//
-// TODO: promiscouse mode - return Option(Ticket).
-//
 use cocaine::service::Tvm;
 use cocaine::{Error, Service};
 use cocaine::service::tvm::Grant;
@@ -13,8 +10,19 @@ use time;
 use config::{Config, Secure};
 use std::rc::Rc;
 
+pub trait SecureProxy {
+    fn ticket_as_header(&mut self) -> Box<Future<Item = Option<String>, Error = Error>>;
+}
 
-pub struct TvmProxy {
+struct PromiscuousProxy;
+
+impl PromiscuousProxy {
+    pub fn new() -> PromiscuousProxy {
+        PromiscuousProxy{}
+    }
+}
+
+struct TvmProxy {
     tvm: Tvm,
     last_updated: i64,
     ticket_expire_sec: Option<i64>,
@@ -23,28 +31,14 @@ pub struct TvmProxy {
 }
 
 impl TvmProxy {
-    pub fn new(config: &Config, service: Service) -> Result<TvmProxy, String> {
-        match config.secure {
-            Some(ref secure) => {
-                Ok(TvmProxy{
-                    tvm: Tvm::new(service),
-                    last_updated: time::get_time().sec,
-                    ticket_expire_sec: config.ticket_expire_sec,
-                    cached_ticket: Rc::new(None),
-                    secure: secure.clone(),
-                })
-            },
-            None => Err("config secure section must exist".to_string())
+    pub fn new(service: Service, ticket_expire_sec: &Option<i64>, secure: &Secure) -> TvmProxy {
+        TvmProxy{
+            tvm: Tvm::new(service),
+            last_updated: 0,
+            ticket_expire_sec: ticket_expire_sec.clone(),
+            cached_ticket: Rc::new(None),
+            secure: secure.clone(),
         }
-    }
-
-    pub fn ticket_as_header(&mut self) -> Box<Future<Item = String, Error = Error>> {
-        let ty = self.secure.get_mod();
-        let header = self.ticket().and_then(move |token| {
-            Ok(format!("{} {}", ty, token))
-        });
-
-        Box::new(header)
     }
 
     pub fn ticket(&mut self) -> Box<Future<Item = String, Error = Error>> {
@@ -82,5 +76,33 @@ impl TvmProxy {
         let future = self.tvm.ticket(self.secure.client_id as u32, &self.secure.client_secret, &grant);
 
         Box::new(future)
+    }
+}
+
+impl SecureProxy for TvmProxy {
+    fn ticket_as_header(&mut self) -> Box<Future<Item = Option<String>, Error = Error>> {
+        let ty = self.secure.get_mod();
+        let header = self.ticket().and_then(move |token| {
+            Ok(Some(format!("{} {}", ty, token)))
+        });
+        Box::new(header)
+    }
+}
+
+impl SecureProxy for PromiscuousProxy {
+    fn ticket_as_header(&mut self) -> Box<Future<Item = Option<String>, Error = Error>> {
+        Box::new(futures::future::ok(None))
+    }
+}
+
+
+pub fn make_ticket_service(service: Service, config: &Config) -> Box<SecureProxy>
+{
+    match config.secure {
+        Some(ref secure) => match &secure.md[..] {
+            "TVM" => Box::new(TvmProxy::new(service, &config.ticket_expire_sec, secure)),
+            _ => Box::new(PromiscuousProxy::new())
+        },
+        None => Box::new(PromiscuousProxy::new())
     }
 }

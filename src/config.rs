@@ -24,7 +24,7 @@ pub struct Config {
 
 #[derive(Debug, Clone)]
 pub struct Secure {
-    md: String,
+    pub md: String,
     pub client_id: i64,
     pub client_secret: String,
     pub grant: Option<Grant>,
