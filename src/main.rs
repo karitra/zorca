@@ -39,9 +39,9 @@ use samples::{
     State
 };
 
-use config::Config;
+use secure::make_ticket_service;
 
-use secure::TvmProxy;
+use config::Config;
 
 
 fn main() {
@@ -86,38 +86,40 @@ fn main() {
 
     if options.is_present("ticket") {
         let mut core = Core::new().unwrap();
-        let tvm = Service::new("tvm", &core.handle());
+
         println!("creating proxy");
 
-        if let Ok(mut proxy) = TvmProxy::new(&config, tvm) {
-            println!("trying to subscribe securely...");
+        let mut proxy = make_ticket_service(Service::new("tvm", &core.handle()), &config);
 
-            if let Some(path) = options.value_of("kids_path") {
-                type Msg = (String, Vec<String>);
-                let (tx, rx) = mpsc::unbounded::<Msg>();
+        if let Some(path) = options.value_of("kids_path") {
+            type Msg = (String, Vec<String>);
+            let (tx, rx) = mpsc::unbounded::<Msg>();
 
-                let handle = core.handle();
+            let handle = core.handle();
 
-                let subscibe_future = proxy.ticket_as_header().and_then(|header| {
-                    let headers = vec![
-                        RawHeader::new("authorization".as_bytes(), header.into_bytes())
+            let subscibe_future = proxy.ticket_as_header().and_then(|header| {
+
+                let headers = header.and_then(|hdr| {
+                    let hdrs = vec![
+                        RawHeader::new("authorization".as_bytes(), hdr.into_bytes())
                     ];
-
-                    println!("subscribing to path: {}", path);
-                    unicorn_kids_subscribe(Service::new("unicorn", &handle), path, Some(headers), handle, tx)
+                    Some(hdrs)
                 });
 
-                let nodes_future = rx.for_each(|nodes| {
-                    println!("got from queue {} item(s)", nodes.1.len());
-                    Ok(())
-                });
+                println!("subscribing to path: {}", path);
+                unicorn_kids_subscribe(Service::new("unicorn", &handle), path, headers, handle, tx)
+            });
 
-                core.handle().spawn(nodes_future);
-                match core.run(subscibe_future) {
-                    Ok(_) => println!("processing done"),
-                    Err(err) => println!("Got an error {:?}", err)
-                };
-            }
+            let nodes_future = rx.for_each(|nodes| {
+                println!("got from queue {} item(s)", nodes.1.len());
+                Ok(())
+            });
+
+            core.handle().spawn(nodes_future);
+            match core.run(subscibe_future) {
+                Ok(_) => println!("processing done"),
+                Err(err) => println!("Got an error {:?}", err)
+            };
         }
     }
 }
