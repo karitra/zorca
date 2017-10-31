@@ -1,45 +1,17 @@
-use std::net::IpAddr;
-use std::collections::HashMap;
+use serde::Deserialize;
 
-use cocaine::service::Unicorn;
-use serde_derive::Deserialize;
-
-#[dereve(Debug, Deserialize)]
+#[derive(Debug, Deserialize)]
 struct Endpoint(String, u16);
 
-#[dereve(Debug, Deserialize)]
-struct Resource {
+#[derive(Debug, Deserialize)]
+struct Resources {
     cpu: i64,
     mem: i64,
-    net: i64,
-    endpoints: Vec<Endpoint>,
 }
 
-struct Node {
-    endpoints: Vec<IpAddr>
-}
-
-type Nodes = HashMap<String,Node>;
-
-
-fn make_state(unicorn: &Unicorn, nodes: Vec<String>)
-    -> Nodes
-{
-    let mut futures = Vec::new();
-    for node in &nodes {
-
-        let completion = unicorn.get::<Resource>(node)
-            .and_then(move |version, resource| {
-                println!(" get node rcord {:?}", resource);
-                for ep in &resource.endpoints {
-
-                }
-                Ok(())
-        });
-
-        futures.push(completion);
-    }
-
-    let result = futures::future::join_all(futures);
-    HashMap::new()
+#[derive(Debug, Deserialize)]
+pub struct NodeInfo {
+    hostname: String,
+    resources: Resources,
+    endpoints: Vec<Endpoint>
 }
