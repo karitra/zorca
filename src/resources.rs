@@ -1,17 +1,19 @@
-use serde::Deserialize;
+#[derive(Debug, Deserialize, Clone)]
+pub struct Endpoint(String, u16);
 
 #[derive(Debug, Deserialize)]
-struct Endpoint(String, u16);
-
-#[derive(Debug, Deserialize)]
-struct Resources {
+pub struct Resources {
     cpu: i64,
     mem: i64,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct NodeInfo {
-    hostname: String,
-    resources: Resources,
-    endpoints: Vec<Endpoint>
+    pub hostname: String,
+    pub resources: Resources,
+    pub endpoints: Vec<Endpoint>
+}
+
+impl Endpoint {
+    pub fn host_str(&self) -> String { self.0.clone() }
 }
