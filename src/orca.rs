@@ -4,9 +4,8 @@ use std::sync::RwLock;
 
 use resources::Endpoint;
 
-// use serde::Deserialize;
 
-
+pub const DEFAULT_WEB_SCHEME: &str = "http";
 pub const DEFAULT_WEB_PORT: u16 = 8877;
 pub const DEFAULT_STATUS_PORT: u16 = 9878;
 
@@ -17,7 +16,7 @@ pub enum WebHandler {
     Metrics
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct AppState {
     profile: String,
     state: String,
@@ -33,7 +32,7 @@ pub type OrcasPod = HashMap<String, Orca>;
 pub type SyncedOrcasPod = RwLock<OrcasPod>;
 
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct Info {
     uptime: i64,
     version: String,
