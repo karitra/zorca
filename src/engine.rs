@@ -1,10 +1,9 @@
 use cocaine::Service;
 use cocaine::hpack::RawHeader;
 
-use tokio_core::reactor::{Core, Handle, Timeout};
+use tokio_core::reactor::{Handle, Timeout};
 
 use hyper;
-// use hyper::client::Connect;
 
 use futures::future;
 use futures::{Future, Stream};
@@ -41,7 +40,7 @@ use orca::{
 };
 
 
-const GATHER_INTERVAL_SEC: u64 = 1;
+const GATHER_INTERVAL_SEC: u64 = 2;
 
 
 pub type Cluster = HashMap<String, NodeInfo>;
@@ -85,30 +84,32 @@ fn make_auth_headers(header: Option<String>) -> Option<AuthHeaders>  {
 }
 
 
-pub fn subscription<'a>(config: &Config, path: &'a str, cluster: Arc<SyncedCluster>) {
-    let mut core = Core::new().unwrap();
-    let proxy = make_ticket_service(Service::new("tvm", &core.handle()), &config);
+pub fn subscription<'a>(handle: Handle, config: &Config, path: &'a str, cluster: Arc<SyncedCluster>)
+    -> Box<Future<Item=(), Error=CombinedError> + 'a>
+{
+    let proxy = make_ticket_service(Service::new("tvm", &handle), &config);
     let proxy = Rc::new(RefCell::new(proxy));
 
     let (tx, rx) = mpsc::unbounded::<SubscribeMessage>();
 
-    let handle = core.handle();
+    let subscribe_handle = handle.clone();
+    let subscribe_path = String::from(path);
 
     let subscibe_future = proxy.borrow_mut().ticket_as_header()
         .map_err(CombinedError::CocaineError)
-        .and_then(|header| {
-            println!("subscribing to path: {}", path);
+        .and_then(move |header| {
+            println!("subscribing to path: {}", subscribe_path);
             kids_subscribe(
-                Service::new("unicorn", &handle),
-                path,
+                Service::new("unicorn", &subscribe_handle),
+                subscribe_path,
                 make_auth_headers(header),
                 tx
             )
         });
 
     let path = String::from(path);
-    let spawn_handle = core.handle();
-    let node_handler = core.handle();
+    let spawn_handle = handle.clone();
+    let node_handler = handle.clone();
 
     let nodes_future = rx.for_each(move |(version, nodes)| {
         println!("got from queue {} item(s) with version {}", nodes.len(), version);
@@ -156,14 +157,11 @@ pub fn subscription<'a>(config: &Config, path: &'a str, cluster: Arc<SyncedClust
         Ok(())
     });
 
-    core.handle().spawn(nodes_future);
-    match core.run(subscibe_future) {
-        Ok(_) => println!("subcription processing done"),
-        Err(err) => println!("Got an error {:?}", err)
-    }
+    handle.spawn(nodes_future);
+    Box::new(subscibe_future)
 }
 
-fn make_requests<C>(cli: hyper::Client<C>, uuid: String, ep: Endpoint, handle: Handle)
+fn make_requests<C>(cli: Rc<hyper::Client<C>>, uuid: String, ep: Endpoint)
     -> Box<Future<Item=(), Error=CombinedError>>
 where
     C: hyper::client::Connect
@@ -171,16 +169,18 @@ where
     fn ip6_uri_from_string(uri: &str, port: u16, path: &str)
         -> Result<hyper::Uri, hyper::error::UriError>
     {
-        let uri = format!("[{}]:{}/{}", uri, port, path);
+        let uri = format!("{}://[{}]:{}/{}", orca::DEFAULT_WEB_SCHEME, uri, port, path);
+        println!("uri: {:?}", uri);
         uri.parse::<hyper::Uri>()
     }
 
-    fn get<'a,T,C>(cli: &'a hyper::Client<C>, uri: hyper::Uri)
+    fn get<'a,T,C>(cli: &hyper::Client<C>, uri: hyper::Uri)
         -> Box<Future<Item=T, Error=CombinedError> + 'a>
     where
         C: hyper::client::Connect,
         T: serde::de::DeserializeOwned + 'a
     {
+        println!("get for {:?}", uri);
         let data = cli.get(uri)
             .and_then(|res| {
                 res.body().fold(Vec::new(), |mut acc, chunk| {
@@ -203,24 +203,60 @@ where
     let state_uri = ip6_uri_from_string(&ep.host_str(), DEFAULT_WEB_PORT, "state");
     let _metrics_uri = ip6_uri_from_string(&ep.host_str(), DEFAULT_WEB_PORT, "metrics");
 
-    let info_future = info_uri.map(|uri| {
-        get::<orca::Info, C>(&cli, uri)
-            .and_then(|_info| Ok(())) // TODO: process info record
-    });
+    let _uuid = Rc::new(uuid);
 
-    let state_future = state_uri.map(|uri| {
-        get::<orca::CommitedState, C>(&cli, uri)
-            .and_then(|_info| Ok(())) // TODO: process state record
-    });
+    let cli_for_info = Rc::clone(&cli);
+    let info_future = future::result(info_uri)
+        .and_then(|uri| {
+            println!("ready to connect to uri {:?}", uri);
+            Ok(uri)
+        })
+        .map_err(CombinedError::UriParseError)
+        .and_then(|uri| { // TODO: Debug clusure, remove
+            println!("making info request for {:?}", uri);
+            Ok(uri)
+        })
+        .and_then(move |uri| get::<orca::Info, C>(&cli_for_info, uri))
+        .and_then(|info| {
+            println!("info {:?}", info);
+            Ok(())
+        });
 
-    // let f = state_future.join(info_future);
-    // Box::new(state_future.join(info_future))
-    Box::new(future::ok(()))
+    let cli_for_state = Rc::clone(&cli);
+    let state_future = future::result(state_uri)
+        .map_err(CombinedError::UriParseError)
+        .and_then(|uri| { // TODO: Debug clusure, remove
+            println!("making state request {:?}", uri);
+            Ok(uri)
+        })
+        .and_then(move |uri| get::<orca::CommitedState, C>(&cli_for_state, uri))
+        .and_then(|state| {
+            println!("state {:?}", state);
+            Ok(())
+        });
+
+    //
+    // let r = Box::new(state_future.join(info_future).then(|r|
+    //     match r {
+    //         Ok(v) => {println!("it seems make request done {:?}", v); future::ok(())},
+    //         Err(e) => {println!("error {:?}", e); future::err(e)}
+    //     }
+    // ));
+    //
+    // println!("result is {:?}", r);
+    //
+
+    Box::new(state_future.join(info_future).then(|r| {
+        println!("request completion {:?}", r);
+        Ok(())
+    }))
 }
 
 
-fn _gather_info(core: Core, cluster: Arc<SyncedCluster>, _orcas: Arc<SyncedOrcasPod>)
- -> Box<Future<Item=Vec<()>, Error=CombinedError>>
+// TODO: current implemetation will cancel request in case of error in any one,
+//       reimplement to make complete other in case of some tasks fail.
+pub fn gather(handle: Handle, cluster: Arc<SyncedCluster>, _orcas: Arc<SyncedOrcasPod>)
+ -> Box<Future<Item=(), Error=CombinedError>>
 {
 
     fn is_ipv6(addr: &Endpoint) -> bool {
@@ -235,43 +271,39 @@ fn _gather_info(core: Core, cluster: Arc<SyncedCluster>, _orcas: Arc<SyncedOrcas
 
     println!("cluster size {}", endpoints.len());
 
-    // let core = Core::new().unwrap();
-    // let cli = hyper::Client::new(&core.handle());
+    let cli_handle = handle.clone();
+    let cli = Rc::new(hyper::Client::new(&cli_handle));
+
+    let handle = Rc::new(handle);
 
     for (num, (uuid, ep)) in endpoints.iter().enumerate() {
-        let to_sleep = time::Duration::new((num as u64 % GATHER_INTERVAL_SEC) * 1000, 0);
-        let handle = core.handle();
+        let to_sleep = time::Duration::new((num as u64 % GATHER_INTERVAL_SEC), 0);
 
-        let gather_bootstrap = Timeout::new(to_sleep, &core.handle())
+        let cli = Rc::clone(&cli);
+        let gather_bootstrap = Timeout::new(to_sleep, &handle)
             .map_err(CombinedError::IOError)
             .and_then(move |_| Ok((uuid, ep)))
             .and_then(|(uuid, eps)| {
                 let eps_v6: Vec<_> = eps.iter().filter(|ep| is_ipv6(ep)).collect();
 
                 //
-                // TODO: make one client for all requests.
-                // TODO: first address taken (if any), but should take random one
+                // TODO: first address taken (if any), but should we peek random one
                 //
-                let cli = hyper::Client::new(&core.handle());
-                if let Some(ref ep) = eps_v6.first() {
-                    let requests = make_requests(cli, uuid.to_string(), (**ep).clone(), handle);
-                    Ok(requests)
-                } else {
-                    let error_message = format!("can't find ip6 address for uuid {} within hosts {:?}", uuid, eps);
-                    Err(CombinedError::Other(error_message))
+                match eps_v6.first() {
+                    Some(ref ep) => {
+                        let requests = make_requests(cli, uuid.to_string(), (**ep).clone());
+                        println!("preparing request for {}: {:?}", uuid, ep);
+                        Ok(requests)
+                    },
+                    None => {
+                        let error_message = format!("can't find ip6 address for uuid {} within hosts {:?}", uuid, eps);
+                        Err(CombinedError::Other(error_message))
+                    }
                 }
             });
 
         gather_strides.push(gather_bootstrap);
     }
 
-    // Box::new(future::join_all(gather_strides))
-    let r = Vec::new();
-    Box::new(future::ok(r))
-}
-
-
-pub fn gather_info(cluster: Arc<SyncedCluster>, _orcas: Arc<SyncedOrcasPod>) {
-    let cls = cluster.read().unwrap();
-    println!("cluster size {}", cls.len());
+    Box::new(future::join_all(gather_strides).and_then(|_| Ok(())))
 }

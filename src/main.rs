@@ -22,6 +22,7 @@ extern crate hyper;
 use clap::{App, Arg, ArgMatches};
 use std::sync::Arc;
 
+use tokio_core::reactor::Core;
 
 mod samples;
 mod config;
@@ -38,7 +39,7 @@ use engine::{
     Cluster,
     SyncedCluster,
     subscription,
-    gather_info,
+    gather,
 };
 
 use orca::{
@@ -86,19 +87,27 @@ fn main() {
     let subscribe_thread = std::thread::spawn(move || {
         let cls = cluster_for_subscribe;
         loop {
+            let mut core = Core::new().unwrap();
+
             let cls = Arc::clone(&cls);
             let cls1 = Arc::clone(&cls);
 
-            subscription(
+            let work = subscription(
+                core.handle(),
                 &ctx_for_subscribe.config,
                 ctx_for_subscribe.get_listen_path(),
                 cls,
             );
 
+            match core.run(work) {
+                // TODO: timestamp
+                Ok(_) => println!("cluster info updated"),
+                Err(e) => println!("error while obtaining cluster state {:?}", e)
+            };
+
             {
                 // We are in case of Cocaine error here, reset cluster info.
-                let mut cls = cls1.write().unwrap();
-                cls.clear();
+                cls1.write().unwrap().clear();
             }
 
             // sleep on subscribe error and try again
@@ -109,12 +118,22 @@ fn main() {
     let _ctx_for_gather = Arc::clone(&context);
     let cluster_for_gather = Arc::clone(&cluster);
     let state_gather_thread = std::thread::spawn(move || {
+
         let cls = cluster_for_gather;
         let orcas = orcas;
+
         loop {
+            let mut core = Core::new().unwrap();
+
             let cls = Arc::clone(&cls);
             let orcas = Arc::clone(&orcas);
-            gather_info(cls, orcas);
+
+            let work = gather(core.handle(), cls, orcas);
+            match core.run(work) {
+                Ok(_) => println!("orcas pod has been updated"),
+                Err(e) => println!("failed to request orcas with error {:?}", e),
+            };
+
             std::thread::sleep(std::time::Duration::new(POLL_DURATION_SEC, 0));
         }
     });
