@@ -9,7 +9,7 @@ use futures::sync::mpsc::SendError;
 
 #[derive(Debug)]
 pub enum CombinedError {
-    UriParseError,
+    UriParseError(hyper::error::UriError),
     QueueSendError(SendError<SubscribeMessage>),
     CocaineError(cocaine::Error),
     IOError(std::io::Error),
