@@ -3,9 +3,9 @@ use std;
 use hyper;
 use serde_json;
 
-use types::SubscribeMessage;
 use futures::sync::mpsc::SendError;
 
+use engine::SubscribeMessage;
 
 #[derive(Debug)]
 pub enum CombinedError {

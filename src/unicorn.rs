@@ -10,7 +10,7 @@ use std::fmt::Debug;
 use serde::Deserialize;
 
 use errors::CombinedError;
-use types::SubscribeMessage;
+use engine::SubscribeMessage;
 
 
 pub fn kids_subscribe<'a, H, Q>(service: Service, path: String, headers: H, sender: Q)
