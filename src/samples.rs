@@ -17,7 +17,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 use errors::CombinedError;
-use types::SubscribeMessage;
+use engine::{Cluster, SubscribeMessage};
+use resources::{NodeInfo, Resources, Endpoint};
 
 
 #[derive(Deserialize, Debug)]
@@ -120,4 +121,53 @@ where
         }).map_err(CombinedError::CocaineError);
 
     Box::new(future)
+}
+
+pub fn make_dummy_cluster() -> Cluster {
+    let mut cluster = Cluster::new();
+
+    fn make_dummy_node_info(hostname: &str, resources: Resources, ep: Endpoint) -> NodeInfo {
+        let endpoints = vec![ep];
+        let hostname = String::from(hostname);
+        NodeInfo{hostname, resources, endpoints}
+    }
+
+    cluster.insert(
+        "a".to_string(),
+        make_dummy_node_info(
+            "host1.net",
+            Resources{cpu: 100, mem: 1024},
+            Endpoint("::1".to_string(), 8877)
+        )
+    );
+
+    cluster.insert(
+        "b".to_string(),
+        make_dummy_node_info(
+            "host2.net",
+            Resources{cpu: 2*100, mem: 2*1024},
+            Endpoint("::1".to_string(), 8877)
+        )
+    );
+
+    cluster.insert(
+        "c".to_string(),
+        make_dummy_node_info(
+            "host3.net",
+            Resources{cpu: 3*100, mem: 3*1024},
+            Endpoint("::1".to_string(), 8877)
+        )
+    );
+
+    cluster.insert(
+        "d".to_string(),
+        make_dummy_node_info(
+            "host4.net",
+            Resources{cpu: 4*100, mem: 4*1024},
+            Endpoint("::1".to_string(), 8877)
+        )
+    );
+
+
+    cluster
 }
