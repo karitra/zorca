@@ -27,7 +27,6 @@ use tokio_core::reactor::Core;
 mod samples;
 mod config;
 mod secure;
-mod types;
 mod errors;
 mod unicorn;
 mod engine;
@@ -46,6 +45,8 @@ use orca::{
     SyncedOrcasPod,
     OrcasPod
 };
+
+use samples::make_dummy_cluster;
 
 
 const SUSPEND_DURATION_SEC: u64 = 10;
@@ -66,31 +67,37 @@ impl<'a> Context<'a> {
 
 fn main() {
     let options = App::new("Cocaine orchestrator(s) monitoring tools")
-        .version("unreleased-1")
+        .version("unreleased-2")
         .arg(Arg::with_name("kids_path")
             .short("k")
             .long("kids")
             .required(true)
             .takes_value(true)
             .help("node to subscribe for kids updates"))
+        .arg(Arg::with_name("dummy_data")
+            .short("d")
+            .long("dummy")
+            .help("use dummy host data for testing and debuging"))
         .get_matches();
 
     let config = Config::new_from_default_files();
     let context = Arc::new(Context{config, options});
 
+    //
     // TODO: factory for hide construction details
+    //
     let cluster = Arc::new(SyncedCluster::new(Cluster::new()));
     let orcas = Arc::new(SyncedOrcasPod::new(OrcasPod::new()));
 
     let ctx_for_subscribe = Arc::clone(&context);
     let cluster_for_subscribe = Arc::clone(&cluster);
+
     let subscribe_thread = std::thread::spawn(move || {
-        let cls = cluster_for_subscribe;
         loop {
             let mut core = Core::new().unwrap();
 
-            let cls = Arc::clone(&cls);
-            let cls1 = Arc::clone(&cls);
+            let cls = Arc::clone(&cluster_for_subscribe);
+            let cls1 = Arc::clone(&cluster_for_subscribe);
 
             let work = subscription(
                 core.handle(),
@@ -105,7 +112,7 @@ fn main() {
                 Err(e) => println!("error while obtaining cluster state {:?}", e)
             };
 
-            {
+            { // TODO: do we need extra scope?
                 // We are in case of Cocaine error here, reset cluster info.
                 cls1.write().unwrap().clear();
             }
@@ -115,28 +122,33 @@ fn main() {
         }
     });
 
-    let _ctx_for_gather = Arc::clone(&context);
-    let cluster_for_gather = Arc::clone(&cluster);
+    let cluster_for_gather = match context.options.is_present("dummy_data") {
+        true => Arc::new(SyncedCluster::new(make_dummy_cluster())),
+        false => Arc::clone(&cluster)
+    };
+
     let state_gather_thread = std::thread::spawn(move || {
-
-        let cls = cluster_for_gather;
-        let orcas = orcas;
-
         loop {
             let mut core = Core::new().unwrap();
+            let client = hyper::client::Client::new(&core.handle());
 
-            let cls = Arc::clone(&cls);
-            let orcas = Arc::clone(&orcas);
+            let work = gather(&client, Arc::clone(&cluster_for_gather), Arc::clone(&orcas));
 
-            let work = gather(core.handle(), cls, orcas);
             match core.run(work) {
                 Ok(_) => println!("orcas pod has been updated"),
                 Err(e) => println!("failed to request orcas with error {:?}", e),
             };
 
+            { // TODO: do we need extra scope?
+                let len = orcas.read().unwrap().len();
+                println!("orcas pod size now is {}", len);
+            }
+
             std::thread::sleep(std::time::Duration::new(POLL_DURATION_SEC, 0));
         }
     });
+
+    // TODO: implement web api.
 
     state_gather_thread.join().unwrap();
     subscribe_thread.join().unwrap();
