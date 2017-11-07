@@ -14,7 +14,7 @@ extern crate serde_json;
 
 extern crate yaml_rust;
 
-extern crate clap;
+#[macro_use] extern crate clap;
 extern crate time;
 extern crate hyper;
 
@@ -69,7 +69,7 @@ impl<'a> Context<'a> {
 
 fn main() {
     let options = App::new("Cocaine orchestrator(s) monitoring tools")
-        .version("unreleased-2")
+        .version(crate_version!())
         .arg(Arg::with_name("kids_path")
             .short("k")
             .long("kids")
