@@ -40,10 +40,10 @@ use orca::{
 };
 
 
-// Note: in case of massive cluster updates (score of machines been restarted),
-//       it could be quite massive subscription update rate, channel queue size,
+// Note: in case of massive cluster updates (score of machines was restarted),
+//       it could be quite massive subscription update rate, so channel queue size
 //       can help hold mem usage constrained in that case or in case when unicorn
-//       will go nuts and flood with subscriptions.
+//       will go nuts and flood ecosystem with subscriptions.
 const SUBSCRIBE_QUEUE_SIZE: usize = 1024;
 
 const ONE_HOUR_IN_SECS: u64 = 1 * 60 * 60;
@@ -202,7 +202,7 @@ where
         // println!("get for {:?}", uri);
         let data = cli.get(uri)
             .and_then(|res| {
-                // println!("reusult {}", res.status());
+                // println!("result {}", res.status());
                 res.body().fold(Vec::new(), |mut acc, chunk| {
                     acc.extend(&chunk[..]);
                     future::ok::<Vec<u8>,hyper::Error>(acc)
