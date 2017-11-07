@@ -7,7 +7,6 @@ extern crate cocaine;
 extern crate futures;
 extern crate tokio_core;
 
-
 #[macro_use] extern crate serde_derive;
 extern crate serde;
 extern crate serde_json;
@@ -16,7 +15,10 @@ extern crate yaml_rust;
 
 #[macro_use] extern crate clap;
 extern crate time;
+
 extern crate hyper;
+extern crate hyper_staticfile;
+extern crate service_fn;
 
 
 use clap::{App, Arg, ArgMatches};
@@ -32,6 +34,7 @@ mod unicorn;
 mod engine;
 mod orca;
 mod resources;
+mod web;
 
 use config::Config;
 use engine::{
@@ -127,38 +130,59 @@ fn main() {
         false => Arc::clone(&cluster)
     };
 
+    let orcas_for_gather = Arc::clone(&orcas);
+    let apps_for_gather = Arc::clone(&apps);
+
     let state_gather_thread = std::thread::spawn(move || {
         loop {
             let mut core = Core::new().unwrap();
             let client = hyper::client::Client::new(&core.handle());
 
-            let work = gather(&client, Arc::clone(&cluster_for_gather), Arc::clone(&orcas));
+            let work = gather(
+                &client,
+                Arc::clone(&cluster_for_gather),
+                Arc::clone(&orcas_for_gather)
+            );
 
             match core.run(work) {
                 Ok(_) => println!("orcas pod has been updated"),
                 Err(e) => println!("failed to request orcas with error {:?}", e),
             };
 
-            let len = orcas.read().unwrap().len();
+            let len = orcas_for_gather.read().unwrap().len();
             println!("orcas pod size now is {}", len);
 
             {   // Update apps stat.
-                let orcas = orcas.read().unwrap();
-                let mut apps = apps.write().unwrap();
+                let orcas = orcas_for_gather.read().unwrap();
+                let mut apps = apps_for_gather.write().unwrap();
 
                 apps.update(&orcas);
             }
 
-            let len = apps.read().unwrap().len();
+            let len = apps_for_gather.read().unwrap().len();
             println!("apps in global state {}", len);
 
             std::thread::sleep(std::time::Duration::new(POLL_DURATION_SEC, 0));
         }
     });
 
-    // TODO: web API.
-    let mut _core = Core::new();
-    // _core.run().unwrap();
+    let model = web::Model {
+        cluster: Arc::clone(&cluster),
+        orcas: Arc::clone(&orcas),
+        apps: Arc::clone(&apps)
+    };
+    let model = Arc::new(model);
+
+    let web_thread = std::thread::spawn(move || {
+        loop {
+            match web::run(Arc::clone(&model)) {
+                Ok(_) => println!("web service exited normally"),
+                Err(e) => println!("error in web service {:?}", e)
+            }
+        }
+    });
+
+    web_thread.join().unwrap();
     state_gather_thread.join().unwrap();
     subscribe_thread.join().unwrap();
 }
