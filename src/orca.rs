@@ -20,7 +20,7 @@ pub enum WebHandler {
     Metrics
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AppState {
     profile: String,
     state: String,
@@ -44,19 +44,21 @@ pub trait AppsTrait {
 }
 
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Info {
     pub uptime: i64,
     pub version: String,
     pub uuid: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Orca {
     pub endpoints: Vec<Endpoint>,
     pub state: CommitedState,
     pub info: Info,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OrcaRecord {
     pub orca: Orca,
     pub update_timestamp: u64,
@@ -64,15 +66,16 @@ pub struct OrcaRecord {
 
 type HostsAndWorkers = (String, i64);
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AppStat {
-    pub workers: i64,
+    pub total_workers: i64,
     pub profiles: HashSet<String>,
     pub hosts: HashSet<HostsAndWorkers>,
 }
 
 impl AppStat {
     pub fn new() -> AppStat {
-        AppStat { workers: 0, profiles: HashSet::new(), hosts: HashSet::new() }
+        AppStat { total_workers: 0, profiles: HashSet::new(), hosts: HashSet::new() }
     }
 }
 
@@ -84,7 +87,7 @@ impl AppsTrait for Apps {
             for (app, state) in &orca.orca.state {
                 let record = self.entry(app.clone()).or_insert(AppStat::new());
 
-                record.workers += state.workers;
+                record.total_workers += state.workers;
                 record.profiles.insert(state.profile.clone());
 
                 record.hosts.insert((hostname.clone(), state.workers));
