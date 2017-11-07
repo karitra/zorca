@@ -148,7 +148,9 @@ fn main() {
         }
     });
 
-    // TODO: implement web api.
+    // TODO: web API.
+    let mut _core = Core::new();
+    // _core.run().unwrap();
 
     state_gather_thread.join().unwrap();
     subscribe_thread.join().unwrap();
