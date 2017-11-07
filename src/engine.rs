@@ -40,6 +40,12 @@ use orca::{
 };
 
 
+// Note: in case of massive cluster updates (score of machines been restarted),
+//       it could be quite massive subscription update rate, channel queue size,
+//       can help hold mem usage constrained in that case or in case when unicorn
+//       will go nuts and flood with subscriptions.
+const SUBSCRIBE_QUEUE_SIZE: usize = 1024;
+
 const ONE_HOUR_IN_SECS: u64 = 1 * 60 * 60;
 const GATHER_INTERVAL_SECS: u64 = 60;
 
@@ -103,7 +109,7 @@ pub fn subscription<'a>(handle: Handle, config: &Config, path: &'a str, cluster:
     let proxy = make_ticket_service(Service::new("tvm", &handle), &config);
     let proxy = Rc::new(RefCell::new(proxy));
 
-    let (tx, rx) = mpsc::unbounded::<SubscribeMessage>();
+    let (tx, rx) = mpsc::channel::<SubscribeMessage>(SUBSCRIBE_QUEUE_SIZE);
 
     let subscribe_handle = handle.clone();
     let subscribe_path = String::from(path);

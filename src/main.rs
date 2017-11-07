@@ -115,10 +115,7 @@ fn main() {
                 Err(e) => println!("error while obtaining cluster state {:?}", e)
             };
 
-            { // TODO: do we need extra scope?
-                // We are in case of Cocaine error here, reset cluster info.
-                cls1.write().unwrap().clear();
-            }
+            cls1.write().unwrap().clear();
 
             // sleep on subscribe error and try again
             std::thread::sleep(std::time::Duration::new(SUSPEND_DURATION_SEC, 0));
