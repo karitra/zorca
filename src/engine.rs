@@ -170,7 +170,8 @@ pub fn subscription<'a>(handle: Handle, config: &Config, path: &'a str, cluster:
     Box::new(subscibe_future)
 }
 
-type OrcaRequestResult = (/* hostname: */ String, orca::Orca);
+
+type OrcaRequestResult = (String, orca::Orca); // (hostname, orca)
 
 fn make_requests<'a, C>(
     client: &'a hyper::client::Client<C>, endpoint: Endpoint, net_info: &NetInfo)
@@ -259,8 +260,7 @@ fn dump_cls(cls: &Cluster) {
     }
 }
 
-// TODO: current implemetation will cancel request in case of error in any one,
-//       reimplement to make complete other in case of some tasks fail.
+
 pub fn gather<'a,C>(client: &'a hyper::client::Client<C>, cluster: Arc<SyncedCluster>, orcas: Arc<SyncedOrcasPod>)
     -> Box<Future<Item=(), Error=CombinedError> + 'a>
 where
@@ -309,6 +309,7 @@ where
         let completion = gather_bootstrap
             .then(|r| match r {
                 Ok(r) => Ok(Some(r)),
+                //
                 // TODO: For now error is ignored silently, but we should
                 //       report it to some kind of logger someday.
                 Err(_e) => {
@@ -333,11 +334,11 @@ where
             }
 
             {
-                let mut wr_orcas = orcas.write().unwrap();
+                let mut orcas = orcas.write().unwrap();
                 for val in responses {
                     if let Some((host, orca)) = val {
                         let record = OrcaRecord { orca, update_timestamp: now.as_secs() };
-                        wr_orcas.insert(host, record);
+                        orcas.insert(host, record);
                     }
                 }
             }
