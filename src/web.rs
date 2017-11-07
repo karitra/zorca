@@ -20,7 +20,7 @@ use service_fn::service_fn;
 
 use std::sync::RwLock;
 use std::net::SocketAddr;
-
+use std::ops::Deref;
 use std::collections::VecDeque;
 
 use engine::SyncedCluster;
@@ -47,7 +47,7 @@ enum Route<'a> {
 
 fn parse_path<'a>(path: &'a str) -> Route<'a> {
     let mut parts: VecDeque<_> = path.split('/').collect();
-    parts.pop_front();
+    parts.pop_front(); // normal path always contains '/' at beginning
 
     println!("path parts {:?}", parts);
 
@@ -63,14 +63,24 @@ fn mark_not_found(response: &mut Response, _path: &str) {
     response.set_body(NOT_FOUND);
 }
 
-// TODO: remove arc from signature, should be pure reference.
-fn set_json_body<T>(response: &mut Response, apps: Arc<RwLock<T>>)
-where
-    T: serde::de::DeserializeOwned + serde::ser::Serialize
-{
-    let apps = apps.read().unwrap();
 
-    let body = serde_json::to_string(&*apps).unwrap();
+fn set_json_body_locked<T>(response: &mut Response, item: Arc<RwLock<T>>)
+where
+    T: serde::ser::Serialize
+{
+    let unlocked = item.read().unwrap();
+    set_json_body(response, unlocked.deref());
+}
+
+fn set_json_body<T>(response: &mut Response, item: &T)
+where
+    T: serde::ser::Serialize
+{
+    let body = match serde_json::to_string(item) {
+        Ok(b) => b,
+        Err(_) => "{}".into()
+    };
+
     let len = body.len();
 
     response.set_body(body);
@@ -79,6 +89,7 @@ where
 }
 
 pub fn run(model: Arc<Model>) -> Result<(), hyper::Error> {
+    // TODO: interface from config
     let addr: SocketAddr = "[::1]:3000".parse().unwrap();
 
     let service = move || Ok(service_fn(|req: Request|{
@@ -88,13 +99,14 @@ pub fn run(model: Arc<Model>) -> Result<(), hyper::Error> {
         let command = parse_path(path);
 
         match (req.method(), command) {
-            // TODO: static content.
+            // TODO: serve static content.
             (&Method::Get, Route::Asset(_asset)) => response.set_body("asset"),
             // basic api implementation.
             (&Method::Get, Route::Api(ver, func)) => match (ver, func) {
-                ("v1", "apps")    => set_json_body(&mut response, Arc::clone(&model.apps)),
-                ("v1", "cluster") => set_json_body(&mut response, Arc::clone(&model.cluster)),
-                ("v1", "orcas")   => set_json_body(&mut response, Arc::clone(&model.orcas)),
+                ("v1", "apps")    => set_json_body_locked(&mut response, Arc::clone(&model.apps)),
+                ("v1", "cluster") => set_json_body_locked(&mut response, Arc::clone(&model.cluster)),
+                ("v1", "orcas")   => set_json_body_locked(&mut response, Arc::clone(&model.orcas)),
+                ("v1", "self")    => (), // TODO: self info: version etc
                 _ => mark_not_found(&mut response, path)
             },
             _ => mark_not_found(&mut response, path)
