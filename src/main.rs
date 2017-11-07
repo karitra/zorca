@@ -20,11 +20,16 @@ extern crate hyper;
 extern crate hyper_staticfile;
 extern crate service_fn;
 
-
 use clap::{App, Arg, ArgMatches};
 use std::sync::Arc;
+use std::net::SocketAddr;
+
+use futures::Stream;
 
 use tokio_core::reactor::Core;
+use tokio_core::net::TcpListener;
+
+use hyper::server::Http;
 
 mod samples;
 mod config;
@@ -50,6 +55,8 @@ use orca::{
     OrcasPod,
     AppsTrait,
 };
+
+use web::WebApi;
 
 use samples::make_dummy_cluster;
 
@@ -171,14 +178,28 @@ fn main() {
         orcas: Arc::clone(&orcas),
         apps: Arc::clone(&apps)
     };
-    let model = Arc::new(model);
 
     let web_thread = std::thread::spawn(move || {
         loop {
-            match web::run(Arc::clone(&model)) {
+            let mut core = Core::new().unwrap();
+            let handle = core.handle();
+
+            // TODO: take from config
+            let address: SocketAddr = "[::1]:3141".parse().unwrap();
+            let listener = TcpListener::bind(&address, &handle).unwrap();
+
+            // TODO: hide details somehow.
+            let http = Http::new();
+            let server = listener.incoming().for_each(|(sock, addr)| {
+                let web = WebApi::new(&handle, model.clone(), "assets");
+                http.bind_connection(&handle, sock, addr, web);
+                Ok(())
+            });
+
+            match core.run(server) {
                 Ok(_) => println!("web service exited normally"),
                 Err(e) => println!("error in web service {:?}", e)
-            }
+            };
         }
     });
 

@@ -2,24 +2,24 @@
 // TODO: ugly & dirty fast coded implementation, rewrite/refactor someday.
 // TODO: cache serialize strings, update on change?
 //
-use hyper::{
-    self,
-    Method,
-    StatusCode
-};
-
-use std::sync::Arc;
+use futures::{Future, future};
+use tokio_core::reactor::Handle;
 
 use serde;
 use serde_json;
 
+use hyper_staticfile::Static;
+
 use hyper::header::{ContentLength, ContentType};
-use hyper::server::{Http, Request, Response};
+use hyper::server::{Request, Response, Service};
+use hyper::{
+    Error,
+    Method,
+    StatusCode
+};
 
-use service_fn::service_fn;
-
-use std::sync::RwLock;
-use std::net::SocketAddr;
+use std::sync::{Arc, RwLock};
+use std::path::Path;
 use std::ops::Deref;
 use std::collections::VecDeque;
 
@@ -30,8 +30,17 @@ use orca::{
 };
 
 
-static NOT_FOUND: &'static str = "<body><bold>Page not found</bold></body>";
+const API_V1: &str = "v1";
+static NOT_FOUND: &str = "<html>\
+    <body>\
+    <h1>Page not found</h1>\
+    </body>\
+    </html>";
 
+
+type BoxedResponseFuture = Box<Future<Item=Response, Error=Error>>;
+
+#[derive(Clone)]
 pub struct Model {
     pub cluster: Arc<SyncedCluster>,
     pub orcas: Arc<SyncedOrcasPod>,
@@ -45,11 +54,11 @@ enum Route<'a> {
     Index
 }
 
-fn parse_path<'a>(path: &'a str) -> Route<'a> {
+fn parse_path(path: &str) -> Route {
     let mut parts: VecDeque<_> = path.split('/').collect();
     parts.pop_front(); // normal path always contains '/' at beginning
 
-    println!("path parts {:?}", parts);
+    // println!("path parts {:?}", parts);
 
     match (parts.len(), parts.front()) {
         (0, _) => Route::Index,
@@ -58,18 +67,28 @@ fn parse_path<'a>(path: &'a str) -> Route<'a> {
     }
 }
 
-fn mark_not_found(response: &mut Response, _path: &str) {
+fn as_not_found(_path: &str)
+    -> BoxedResponseFuture
+{
+    let mut response = Response::new();
+
     response.set_status(StatusCode::NotFound);
     response.set_body(NOT_FOUND);
+
+    Box::new(future::ok(response))
 }
 
-
-fn set_json_body_locked<T>(response: &mut Response, item: Arc<RwLock<T>>)
+fn as_json_locked<T>(item: Arc<RwLock<T>>)
+    -> BoxedResponseFuture
 where
     T: serde::ser::Serialize
 {
+    let mut response = Response::new();
+
     let unlocked = item.read().unwrap();
-    set_json_body(response, unlocked.deref());
+    set_json_body(&mut response, unlocked.deref());
+
+    Box::new(future::ok(response))
 }
 
 fn set_json_body<T>(response: &mut Response, item: &T)
@@ -78,7 +97,7 @@ where
 {
     let body = match serde_json::to_string(item) {
         Ok(b) => b,
-        Err(_) => "{}".into()
+        Err(_) => "{\"error\": \"internal error\"}".into()
     };
 
     let len = body.len();
@@ -88,33 +107,47 @@ where
     response.headers_mut().set(ContentLength(len as u64))
 }
 
-pub fn run(model: Arc<Model>) -> Result<(), hyper::Error> {
-    // TODO: interface from config
-    let addr: SocketAddr = "[::1]:3000".parse().unwrap();
+pub struct WebApi {
+    model: Model,
+    static_content: Static,
+}
 
-    let service = move || Ok(service_fn(|req: Request|{
-        let mut response: Response = Response::new();
+impl WebApi {
+    pub fn new(handle: &Handle, model: Model, static_path: &str) -> WebApi {
+        WebApi {
+            model,
+            static_content: Static::new(handle, Path::new(static_path))
+        }
+    }
+}
 
-        let path = req.path();
-        let command = parse_path(path);
+impl Service for WebApi {
+    type Response = Response;
+    type Request = Request;
+    type Error = Error;
+    type Future = BoxedResponseFuture;
 
-        match (req.method(), command) {
-            // TODO: serve static content.
-            (&Method::Get, Route::Asset(_asset)) => response.set_body("asset"),
-            // basic api implementation.
-            (&Method::Get, Route::Api(ver, func)) => match (ver, func) {
-                ("v1", "apps")    => set_json_body_locked(&mut response, Arc::clone(&model.apps)),
-                ("v1", "cluster") => set_json_body_locked(&mut response, Arc::clone(&model.cluster)),
-                ("v1", "orcas")   => set_json_body_locked(&mut response, Arc::clone(&model.orcas)),
-                ("v1", "self")    => (), // TODO: self info: version etc
-                _ => mark_not_found(&mut response, path)
+    fn call(&self, request: Request) -> Self::Future {
+        let path = request.path().to_string();
+        let command = parse_path(&path);
+
+        let response = match (request.method(), command) {
+            // Serve static content.
+            (&Method::Get, Route::Asset(_asset)) => {
+                println!("asset is {:?}", _asset);
+                self.static_content.call(request)
             },
-            _ => mark_not_found(&mut response, path)
+            // Basic api implementation.
+            (&Method::Get, Route::Api(ver, func)) => match (ver, func) {
+                (API_V1, "apps")    => as_json_locked(Arc::clone(&self.model.apps)),
+                (API_V1, "cluster") => as_json_locked(Arc::clone(&self.model.cluster)),
+                (API_V1, "orcas")   => as_json_locked(Arc::clone(&self.model.orcas)),
+                (API_V1, "self")    => as_not_found(request.path()), // TODO: self info: version etc
+                _ => as_not_found(&path)
+            },
+            _ => as_not_found(&path)
         };
 
-        Ok(response)
-    }));
-
-    let server = Http::new().bind(&addr, service)?;
-    server.run()
+        Box::new(response)
+    }
 }
