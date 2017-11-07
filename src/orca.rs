@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{
+    HashMap,
+    HashSet
+};
 
 use std::sync::RwLock;
 
@@ -28,9 +31,17 @@ pub struct AppState {
 
 // mapping: app -> state
 pub type CommitedState = HashMap<String, AppState>;
+
 // mapping: hostname -> Orca struct
 pub type OrcasPod = HashMap<String, OrcaRecord>;
 pub type SyncedOrcasPod = RwLock<OrcasPod>;
+
+pub type Apps = HashMap<String, AppStat>;
+pub type SyncedApps = RwLock<Apps>;
+
+pub trait AppsTrait {
+    fn update(&mut self, pod: &OrcasPod);
+}
 
 
 #[derive(Debug, Deserialize)]
@@ -49,4 +60,35 @@ pub struct Orca {
 pub struct OrcaRecord {
     pub orca: Orca,
     pub update_timestamp: u64,
+}
+
+type HostsAndWorkers = (String, i64);
+
+pub struct AppStat {
+    pub workers: i64,
+    pub profiles: HashSet<String>,
+    pub hosts: HashSet<HostsAndWorkers>,
+}
+
+impl AppStat {
+    pub fn new() -> AppStat {
+        AppStat { workers: 0, profiles: HashSet::new(), hosts: HashSet::new() }
+    }
+}
+
+impl AppsTrait for Apps {
+    fn update(&mut self, pod: &OrcasPod) {
+        self.clear();
+
+        for (hostname, orca) in pod {
+            for (app, state) in &orca.orca.state {
+                let record = self.entry(app.clone()).or_insert(AppStat::new());
+
+                record.workers += state.workers;
+                record.profiles.insert(state.profile.clone());
+
+                record.hosts.insert((hostname.clone(), state.workers));
+            }
+        }
+    }
 }

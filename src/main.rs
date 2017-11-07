@@ -42,8 +42,10 @@ use engine::{
 };
 
 use orca::{
+    SyncedApps,
     SyncedOrcasPod,
-    OrcasPod
+    OrcasPod,
+    AppsTrait,
 };
 
 use samples::make_dummy_cluster;
@@ -88,6 +90,7 @@ fn main() {
     //
     let cluster = Arc::new(SyncedCluster::new(Cluster::new()));
     let orcas = Arc::new(SyncedOrcasPod::new(OrcasPod::new()));
+    let apps = Arc::new(SyncedApps::new(orca::Apps::new()));
 
     let ctx_for_subscribe = Arc::clone(&context);
     let cluster_for_subscribe = Arc::clone(&cluster);
@@ -139,10 +142,18 @@ fn main() {
                 Err(e) => println!("failed to request orcas with error {:?}", e),
             };
 
-            { // TODO: do we need extra scope?
-                let len = orcas.read().unwrap().len();
-                println!("orcas pod size now is {}", len);
+            let len = orcas.read().unwrap().len();
+            println!("orcas pod size now is {}", len);
+
+            {   // Update apps stat.
+                let orcas = orcas.read().unwrap();
+                let mut apps = apps.write().unwrap();
+
+                apps.update(&orcas);
             }
+
+            let len = apps.read().unwrap().len();
+            println!("apps in global state {}", len);
 
             std::thread::sleep(std::time::Duration::new(POLL_DURATION_SEC, 0));
         }
@@ -151,7 +162,6 @@ fn main() {
     // TODO: web API.
     let mut _core = Core::new();
     // _core.run().unwrap();
-
     state_gather_thread.join().unwrap();
     subscribe_thread.join().unwrap();
 }

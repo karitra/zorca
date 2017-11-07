@@ -41,7 +41,7 @@ use orca::{
 
 
 const ONE_HOUR_IN_SECS: u64 = 1 * 60 * 60;
-const GATHER_INTERVAL_SEC: u64 = 10;
+const GATHER_INTERVAL_SECS: u64 = 60;
 
 
 pub type SubscribeMessage = (i64, Vec<String>);
@@ -281,14 +281,14 @@ where
 
     for (num, (uuid, net)) in hosts.iter().enumerate() {
 
-        let to_sleep = time::Duration::new(num as u64 % GATHER_INTERVAL_SEC, 0);
-        println!("timeout {:?}", (num as u64 % GATHER_INTERVAL_SEC));
+        let to_sleep = time::Duration::new(num as u64 % GATHER_INTERVAL_SECS, 0);
+        // println!("timeout {:?}", (num as u64 % GATHER_INTERVAL_SECS));
 
         let gather_bootstrap = match Timeout::new(to_sleep, &client.handle()) {
             Ok(_timout) => {
                 let eps_v6: Vec<_> = net.endpoints.iter().filter(|net| is_ipv6(net)).collect();
 
-                println!("uuid {}", uuid);
+                // println!("uuid {}", uuid);
 
                 //
                 // TODO: first address taken (if any), but should we peek a random one?
@@ -311,7 +311,10 @@ where
                 Ok(r) => Ok(Some(r)),
                 // TODO: For now error is ignored silently, but we should
                 //       report it to some kind of logger someday.
-                Err(e) => { println!("error on request {:?}", e); Ok(None) }
+                Err(_e) => {
+                    // println!("error on request {:?}", e);
+                    Ok(None)
+                }
             });
 
         gather_strides.push(completion);
