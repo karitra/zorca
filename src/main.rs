@@ -21,7 +21,7 @@ extern crate hyper_staticfile;
 extern crate service_fn;
 
 use clap::{App, Arg, ArgMatches};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::net::SocketAddr;
 
 use futures::Stream;
@@ -56,7 +56,7 @@ use orca::{
     AppsTrait,
 };
 
-use web::WebApi;
+use web::{WebApi, SelfInfo};
 
 use samples::make_dummy_cluster;
 
@@ -173,10 +173,13 @@ fn main() {
         }
     });
 
+    let self_info = SelfInfo::new(crate_version!());
+
     let model = web::Model {
         cluster: Arc::clone(&cluster),
         orcas: Arc::clone(&orcas),
-        apps: Arc::clone(&apps)
+        apps: Arc::clone(&apps),
+        self_info
     };
 
     loop {

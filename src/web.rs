@@ -22,6 +22,7 @@ use std::sync::{Arc, RwLock};
 use std::path::Path;
 use std::ops::Deref;
 use std::collections::VecDeque;
+use std::time::{self, UNIX_EPOCH};
 
 use engine::SyncedCluster;
 use orca::{
@@ -45,6 +46,38 @@ pub struct Model {
     pub cluster: Arc<SyncedCluster>,
     pub orcas: Arc<SyncedOrcasPod>,
     pub apps: Arc<SyncedApps>,
+
+    pub self_info: SelfInfo,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SelfInfo {
+    start_time: u64,
+    uptime: u64,
+    version: String,
+}
+
+impl SelfInfo {
+    pub fn new(version: &str) -> SelfInfo {
+        let start_time = time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let start_time = start_time.as_secs();
+        let version = version.to_string();
+
+        SelfInfo {start_time, version, uptime: 0}
+    }
+
+    pub fn as_json_response(&self) -> BoxedResponseFuture
+    {
+        let mut response = Response::new();
+        let now = time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let now = now.as_secs();
+
+        let to_display = SelfInfo { uptime: now - self.start_time, ..self.clone() };
+        set_json_body(&mut response, &to_display);
+
+        Box::new(future::ok(response))
+    }
+
 }
 
 #[derive(Debug)]
@@ -78,7 +111,7 @@ fn as_not_found(_path: &str)
     Box::new(future::ok(response))
 }
 
-fn as_json_locked<T>(item: Arc<RwLock<T>>)
+fn as_json_locked<T>(item: &RwLock<T>)
     -> BoxedResponseFuture
 where
     T: serde::ser::Serialize
@@ -88,6 +121,16 @@ where
     let unlocked = item.read().unwrap();
     set_json_body(&mut response, unlocked.deref());
 
+    Box::new(future::ok(response))
+}
+
+#[allow(dead_code)]
+fn as_json<T>(item: Arc<T>) -> BoxedResponseFuture
+where
+    T: serde::ser::Serialize
+{
+    let mut response = Response::new();
+    set_json_body(&mut response, item.as_ref());
     Box::new(future::ok(response))
 }
 
@@ -139,10 +182,10 @@ impl Service for WebApi {
             },
             // Basic api implementation.
             (&Method::Get, Route::Api(ver, func)) => match (ver, func) {
-                (API_V1, "apps")    => as_json_locked(Arc::clone(&self.model.apps)),
-                (API_V1, "cluster") => as_json_locked(Arc::clone(&self.model.cluster)),
-                (API_V1, "orcas")   => as_json_locked(Arc::clone(&self.model.orcas)),
-                (API_V1, "self")    => as_not_found(request.path()), // TODO: self info: version etc
+                (API_V1, "apps")    => as_json_locked(self.model.apps.as_ref()),
+                (API_V1, "cluster") => as_json_locked(self.model.cluster.as_ref()),
+                (API_V1, "orcas")   => as_json_locked(self.model.orcas.as_ref()),
+                (API_V1, "self")    => self.model.self_info.as_json_response(), // TODO: self info: version etc
                 _ => as_not_found(&path)
             },
             _ => as_not_found(&path)
