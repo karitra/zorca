@@ -194,14 +194,14 @@ where
     }
 
     // TODO: make connector pluggable
-    fn get<'a,C,T>(cli: &'a hyper::Client<C>, uri: hyper::Uri)
+    fn get<'a,C,T>(client: &'a hyper::Client<C>, uri: hyper::Uri)
         -> Box<Future<Item=T, Error=CombinedError> + 'a>
     where
         C: hyper::client::Connect + 'a,
         T: serde::de::DeserializeOwned + 'a
     {
         // println!("get for {:?}", uri);
-        let data = cli.get(uri)
+        let data = client.get(uri)
             .and_then(|res| {
                 // println!("result {}", res.status());
                 res.body().fold(Vec::new(), |mut acc, chunk| {
