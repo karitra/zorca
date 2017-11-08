@@ -1,6 +1,6 @@
 //
 // TODO: ugly & dirty fast coded implementation, rewrite/refactor someday.
-// TODO: cache serialize strings, update on change?
+// TODO: cache serialized strings, update on change?
 //
 use futures::{Future, future};
 use tokio_core::reactor::Handle;
@@ -97,7 +97,7 @@ where
 {
     let body = match serde_json::to_string(item) {
         Ok(b) => b,
-        Err(_) => "{\"error\": \"internal error\"}".into()
+        Err(_) => r#"{"error": "internal error"}"#.into()
     };
 
     let len = body.len();

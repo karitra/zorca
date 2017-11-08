@@ -105,7 +105,7 @@ fn main() {
     let ctx_for_subscribe = Arc::clone(&context);
     let cluster_for_subscribe = Arc::clone(&cluster);
 
-    let subscribe_thread = std::thread::spawn(move || {
+    std::thread::spawn(move || {
         loop {
             let mut core = Core::new().unwrap();
 
@@ -140,7 +140,7 @@ fn main() {
     let orcas_for_gather = Arc::clone(&orcas);
     let apps_for_gather = Arc::clone(&apps);
 
-    let state_gather_thread = std::thread::spawn(move || {
+    std::thread::spawn(move || {
         loop {
             let mut core = Core::new().unwrap();
             let client = hyper::client::Client::new(&core.handle());
@@ -179,31 +179,27 @@ fn main() {
         apps: Arc::clone(&apps)
     };
 
-    let web_thread = std::thread::spawn(move || {
-        loop {
-            let mut core = Core::new().unwrap();
-            let handle = core.handle();
+    loop {
+        let mut core = Core::new().unwrap();
+        let handle = core.handle();
 
-            // TODO: take from config
-            let address: SocketAddr = "[::1]:3141".parse().unwrap();
-            let listener = TcpListener::bind(&address, &handle).unwrap();
+        // TODO: take from config
+        let address: SocketAddr = "[::1]:3141".parse().unwrap();
+        let listener = TcpListener::bind(&address, &handle).unwrap();
 
-            // TODO: hide details somehow.
-            let http = Http::new();
-            let server = listener.incoming().for_each(|(sock, addr)| {
-                let web = WebApi::new(&handle, model.clone(), "assets");
-                http.bind_connection(&handle, sock, addr, web);
-                Ok(())
-            });
+        // TODO: hide details somehow.
+        let http = Http::new();
+        let server = listener.incoming().for_each(|(sock, addr)| {
+            let web = WebApi::new(&handle, model.clone(), "assets");
+            http.bind_connection(&handle, sock, addr, web);
+            Ok(())
+        });
 
-            match core.run(server) {
-                Ok(_) => println!("web service exited normally"),
-                Err(e) => println!("error in web service {:?}", e)
-            };
-        }
-    });
+        match core.run(server) {
+            Ok(_) => println!("web service exited normally"),
+            Err(e) => println!("error in web service {:?}", e)
+        };
 
-    web_thread.join().unwrap();
-    state_gather_thread.join().unwrap();
-    subscribe_thread.join().unwrap();
+        std::thread::sleep(std::time::Duration::new(SUSPEND_DURATION_SEC, 0));
+    }
 }

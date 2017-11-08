@@ -46,8 +46,9 @@ use orca::{
 //       will go nuts and flood ecosystem with subscriptions.
 const SUBSCRIBE_QUEUE_SIZE: usize = 1024;
 
+// TODO: Should be in config with reasonable defautls someday.
+const GATHER_INTERVAL_SECS: u64 = 120;
 const ONE_HOUR_IN_SECS: u64 = 1 * 60 * 60;
-const GATHER_INTERVAL_SECS: u64 = 60;
 
 
 pub type SubscribeMessage = (i64, Vec<String>);
