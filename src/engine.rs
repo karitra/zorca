@@ -284,7 +284,7 @@ where
     let hosts = cluster.read().unwrap().hosts();
     let mut gather_strides = Vec::with_capacity(cluster.read().unwrap().len());
 
-    println!("cluster size {}", hosts.len());
+    println!("cluster size is {}", hosts.len());
 
     for (num, (uuid, net)) in hosts.iter().enumerate() {
 

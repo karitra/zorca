@@ -21,7 +21,7 @@ extern crate hyper_staticfile;
 extern crate service_fn;
 
 use clap::{App, Arg, ArgMatches};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::net::SocketAddr;
 
 use futures::Stream;
@@ -96,7 +96,7 @@ fn main() {
     let context = Arc::new(Context{config, options});
 
     //
-    // TODO: factory for hide construction details
+    // TODO: factory for hide construction details?
     //
     let cluster = Arc::new(SyncedCluster::new(Cluster::new()));
     let orcas = Arc::new(SyncedOrcasPod::new(OrcasPod::new()));
@@ -193,6 +193,7 @@ fn main() {
         // TODO: hide details somehow.
         let http = Http::new();
         let server = listener.incoming().for_each(|(sock, addr)| {
+            // TODO: static file folder from config.
             let web = WebApi::new(&handle, model.clone(), "assets");
             http.bind_connection(&handle, sock, addr, web);
             Ok(())
