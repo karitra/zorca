@@ -87,7 +87,6 @@ enum Route<'a> {
 }
 
 fn parse_path(path: &str) -> Route {
-
     // println!("path to parse {:?}", path);
 
     let mut parts: VecDeque<_> = path.split('/').collect();

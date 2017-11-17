@@ -18,7 +18,6 @@ extern crate time;
 
 extern crate hyper;
 extern crate hyper_staticfile;
-extern crate service_fn;
 
 use clap::{App, Arg, ArgMatches};
 use std::sync::Arc;
