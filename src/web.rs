@@ -84,17 +84,18 @@ impl SelfInfo {
 enum Route<'a> {
     Api(&'a str, &'a str),
     Asset(&'a str),
-    Index
 }
 
 fn parse_path(path: &str) -> Route {
+
+    // println!("path to parse {:?}", path);
+
     let mut parts: VecDeque<_> = path.split('/').collect();
     parts.pop_front(); // normal path always contains '/' at beginning
 
     // println!("path parts {:?}", parts);
 
     match (parts.len(), parts.front()) {
-        (0, _) => Route::Index,
         (3, Some(&"api")) => Route::Api(parts[1], parts[2]),
         _ => Route::Asset(path)
     }
