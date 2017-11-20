@@ -49,6 +49,7 @@ pub struct Info {
     pub uptime: i64,
     pub version: String,
     pub uuid: String,
+    // TODO: add api version when orca with updated info handle will be widly deployed
 }
 
 #[derive(Debug, Serialize, Deserialize)]

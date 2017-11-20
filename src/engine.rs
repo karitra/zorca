@@ -180,7 +180,7 @@ pub fn subscription<'a>(handle: Handle, config: &Config, path: &'a str, cluster:
 
 type OrcaRequestResult = (String, orca::Orca); // (hostname, orca)
 
-fn make_requests<'a, C>(
+fn make_requests_v1<'a, C>(
     client: &'a hyper::client::Client<C>, endpoint: Endpoint, net_info: &NetInfo)
     -> Box<Future<Item=OrcaRequestResult, Error=CombinedError> + 'a>
 where
@@ -220,9 +220,15 @@ where
         Box::new(data)
     }
 
+    fn make_path(api_ver: &str, math: &str) -> String {
+        return format!("{}/{}", api_ver, math)
+    }
+
     let info_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, "info");
+
+    // api version could be taken from info handle, hardcoded for now
     let state_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, "state");
-    let _metrics_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, "metrics");
+    let _metrics_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, &make_path("v1", "metrics"));
 
     let info_future = future::result(info_uri)
         .map_err(CombinedError::UriParseError)
@@ -301,7 +307,7 @@ where
                 // TODO: first address taken (if any), but should we peek a random one?
                 //
                 match eps_v6.first() {
-                    Some(ref ep) => make_requests(client, (**ep).clone(), net),
+                    Some(ref ep) => make_requests_v1(client, (**ep).clone(), net),
                     None => {
                         let error_message = format!("can't find ip6 address for uuid {} within host {:?}", uuid, net);
                         Box::new(future::err(CombinedError::Other(error_message)))
