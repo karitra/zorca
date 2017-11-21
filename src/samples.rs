@@ -21,6 +21,9 @@ use engine::{Cluster, SubscribeMessage};
 use resources::{NodeInfo, Resources, Endpoint};
 
 
+const LOCAL_IPV6: &str = "::1";
+
+
 #[derive(Deserialize, Debug)]
 pub struct StateRecord {
     workers: i32,
@@ -137,7 +140,7 @@ pub fn make_dummy_cluster() -> Cluster {
         make_dummy_node_info(
             "host1.net",
             Resources{cpu: 100, mem: 1024},
-            Endpoint("::1".to_string(), 8877)
+            Endpoint(LOCAL_IPV6.to_string(), 8877)
         )
     );
 
@@ -146,7 +149,7 @@ pub fn make_dummy_cluster() -> Cluster {
         make_dummy_node_info(
             "host2.net",
             Resources{cpu: 2*100, mem: 2*1024},
-            Endpoint("::1".to_string(), 8877)
+            Endpoint(LOCAL_IPV6.to_string(), 8877)
         )
     );
 
@@ -155,7 +158,7 @@ pub fn make_dummy_cluster() -> Cluster {
         make_dummy_node_info(
             "host3.net",
             Resources{cpu: 3*100, mem: 3*1024},
-            Endpoint("::1".to_string(), 8877)
+            Endpoint(LOCAL_IPV6.to_string(), 8877)
         )
     );
 
@@ -163,11 +166,29 @@ pub fn make_dummy_cluster() -> Cluster {
         "d".to_string(),
         make_dummy_node_info(
             "host4.net",
-            Resources{cpu: 4*100, mem: 4*1024},
-            Endpoint("::1".to_string(), 8877)
+            Resources{cpu: 9*100, mem: 12*1024},
+            Endpoint(LOCAL_IPV6.to_string(), 8877)
         )
     );
 
+    cluster.insert(
+        "e".to_string(),
+        make_dummy_node_info(
+            "host5.net",
+            Resources{cpu: 8*100, mem: 7*1024},
+            Endpoint(LOCAL_IPV6.to_string(), 8877)
+        )
+    );
+
+
+    cluster.insert(
+        "f".to_string(),
+        make_dummy_node_info(
+            "host6.net",
+            Resources{cpu: 2*100, mem: 1*1024},
+            Endpoint(LOCAL_IPV6.to_string(), 8877)
+        )
+    );
 
     cluster
 }
