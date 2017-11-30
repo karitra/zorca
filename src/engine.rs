@@ -227,7 +227,7 @@ where
     let info_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, "info");
 
     // api version could be taken from info handle, hardcoded for now
-    let state_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, "state");
+    let state_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, &make_path("v1", "state"));
     let _metrics_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, &make_path("v1", "metrics"));
 
     let info_future = future::result(info_uri)
@@ -244,7 +244,7 @@ where
             // println!("making state request {:?}", uri);
             Ok(uri)
         })
-        .and_then(move |uri| get::<C, orca::CommitedState>(client, uri));
+        .and_then(move |uri| get::<C, orca::CommittedState>(client, uri));
 
     let hostname = net_info.hostname.clone();
     let endpoint = endpoint.clone();
@@ -254,7 +254,7 @@ where
             Ok((info, state)) => {
                 let orca = orca::Orca {
                     endpoints: vec![ endpoint ],
-                    state,
+                    committed_state: state,
                     info,
                 };
                 Ok((hostname, orca))

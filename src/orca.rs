@@ -1,7 +1,4 @@
-use std::collections::{
-    HashMap,
-    HashSet
-};
+use std::collections::HashMap;
 
 use std::sync::RwLock;
 
@@ -26,11 +23,18 @@ pub struct AppState {
     state: String,
     workers: i64,
     state_version: i64,
+    about_state: String,
     time_stamp: i64,
 }
 
-// mapping: app -> state
-pub type CommitedState = HashMap<String, AppState>;
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommittedState {
+    // mapping: app -> state
+    state: HashMap<String, AppState>,
+    version: i64,
+    timestamp: i64
+}
+
 
 // mapping: hostname -> Orca struct
 pub type OrcasPod = HashMap<String, OrcaRecord>;
@@ -55,7 +59,7 @@ pub struct Info {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Orca {
     pub endpoints: Vec<Endpoint>,
-    pub state: CommitedState,
+    pub committed_state: CommittedState,
     pub info: Info,
 }
 
@@ -65,18 +69,23 @@ pub struct OrcaRecord {
     pub update_timestamp: u64,
 }
 
-type HostsAndWorkers = (String, i64);
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HostDistribution {
+    profile: String,
+    state: String,
+    state_version: i64,
+    workers: i64,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppStat {
     pub total_workers: i64,
-    pub profiles: HashSet<String>,
-    pub hosts: HashSet<HostsAndWorkers>,
+    pub hosts: HashMap<String, HostDistribution>,
 }
 
 impl AppStat {
     pub fn new() -> AppStat {
-        AppStat { total_workers: 0, profiles: HashSet::new(), hosts: HashSet::new() }
+        AppStat { total_workers: 0, hosts: HashMap::new() }
     }
 }
 
@@ -85,14 +94,20 @@ impl AppsTrait for Apps {
         self.clear();
 
         for (hostname, orca) in pod {
-            for (app, state) in &orca.orca.state {
+            for (app, state) in &orca.orca.committed_state.state {
                 let record = self.entry(app.clone()).or_insert(AppStat::new());
 
                 record.total_workers += state.workers;
-                record.profiles.insert(state.profile.clone());
-
-                record.hosts.insert((hostname.clone(), state.workers));
-            }
-        }
+                record.hosts.insert(
+                    hostname.clone(),
+                    HostDistribution {
+                        profile: state.profile.clone(),
+                        state: state.state.clone(),
+                        state_version: state.state_version,
+                        workers: state.workers,
+                    }
+                );
+            } // for (app, state)
+        } // for (hostname, orca)
     }
 }
