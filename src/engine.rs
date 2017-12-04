@@ -46,7 +46,7 @@ use orca::{
 //       will go nuts and flood ecosystem with subscriptions.
 const SUBSCRIBE_QUEUE_SIZE: usize = 1024;
 
-// TODO: Should be in config with reasonable defautls someday.
+// TODO: Should be in config with reasonable defaults someday.
 const GATHER_INTERVAL_SECS: u64 = 120;
 const ONE_HOUR_IN_SECS: u64 = 1 * 60 * 60;
 
