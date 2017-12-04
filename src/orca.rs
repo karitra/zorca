@@ -43,10 +43,12 @@ pub type SyncedOrcasPod = RwLock<OrcasPod>;
 pub type Apps = HashMap<String, AppStat>;
 pub type SyncedApps = RwLock<Apps>;
 
+// TODO: support of int values (counters).
+pub type Metrics = HashMap<String, f64>;
+
 pub trait AppsTrait {
     fn update(&mut self, pod: &OrcasPod);
 }
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Info {
@@ -61,6 +63,7 @@ pub struct Orca {
     pub endpoints: Vec<Endpoint>,
     pub committed_state: CommittedState,
     pub info: Info,
+    pub metrics: Metrics,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

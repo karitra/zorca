@@ -175,19 +175,23 @@ impl Service for WebApi {
         let command = parse_path(&path);
 
         let response = match (request.method(), command) {
+
             // Serve static content.
             (&Method::Get, Route::Asset(_asset)) => {
                 println!("asset is {:?}", _asset);
                 self.static_content.call(request)
             },
+
             // Basic api implementation.
             (&Method::Get, Route::Api(ver, func)) => match (ver, func) {
                 (API_V1, "apps")    => as_json_locked(self.model.apps.as_ref()),
                 (API_V1, "cluster") => as_json_locked(self.model.cluster.as_ref()),
-                (API_V1, "orcas")   => as_json_locked(self.model.orcas.as_ref()),
+                (API_V1, "orcas") | (API_V1, "pod")
+                                    => as_json_locked(self.model.orcas.as_ref()),
                 (API_V1, "self")    => self.model.self_info.as_json_response(), // TODO: self info: version etc
                 _ => as_not_found(&path)
             },
+
             _ => as_not_found(&path)
         };
 

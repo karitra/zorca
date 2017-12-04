@@ -228,7 +228,7 @@ where
 
     // api version could be taken from info handle, hardcoded for now
     let state_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, &make_path("v1", "state"));
-    let _metrics_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, &make_path("v1", "metrics"));
+    let metrics_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, &make_path("v1", "metrics?flatten"));
 
     let info_future = future::result(info_uri)
         .map_err(CombinedError::UriParseError)
@@ -246,17 +246,28 @@ where
         })
         .and_then(move |uri| get::<C, orca::CommittedState>(client, uri));
 
+    let metrics_future = future::result(metrics_uri)
+        .map_err(CombinedError::UriParseError)
+        .and_then(|uri| { // TODO: Debug clusure, remove
+            // println!("making metrics request {:?}", uri);
+            Ok(uri)
+        })
+        .and_then(move |uri| get::<C, orca::Metrics>(client, uri))
+        .or_else(|_| Ok(orca::Metrics::new()));
+
     let hostname = net_info.hostname.clone();
     let endpoint = endpoint.clone();
 
-    let request_result = info_future.join(state_future)
+    let request_result = info_future.join(state_future).join(metrics_future)
         .then(move |r| match r {
-            Ok((info, state)) => {
+            Ok(((info, committed_state), metrics)) => {
                 let orca = orca::Orca {
                     endpoints: vec![ endpoint ],
-                    committed_state: state,
+                    committed_state,
+                    metrics,
                     info,
                 };
+
                 Ok((hostname, orca))
             },
             Err(e) => Err(e)
