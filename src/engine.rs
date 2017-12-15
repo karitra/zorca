@@ -73,11 +73,11 @@ trait ClusterInterface {
 
 impl ClusterInterface for Cluster {
     fn update(&mut self, nodes: Vec<UuidNodeInfo>) {
+        // TODO: make defence against cluster flapping
         self.clear();
         self.reserve(nodes.len());
 
-        for node in nodes {
-            let (uuid, info) = node;
+        for (uuid, info) in nodes {
             if let Some(info) = info {
                 self.insert(uuid, info);
             }
@@ -128,6 +128,7 @@ pub fn subscription<'a>(handle: Handle, config: &Config, path: &'a str, cluster:
         });
 
     let path = String::from(path);
+
     let spawn_handle = handle.clone();
     let node_handler = handle.clone();
 
@@ -305,8 +306,8 @@ where
 
     for (num, (uuid, net)) in hosts.iter().enumerate() {
 
-        let to_sleep = time::Duration::new(num as u64 % GATHER_INTERVAL_SECS, 0);
-        // println!("timeout {:?}", (num as u64 % GATHER_INTERVAL_SECS));
+        let to_pause = num as u64 % GATHER_INTERVAL_SECS;
+        let to_sleep = time::Duration::new(to_pause, 0);
 
         let gather_bootstrap = match Timeout::new(to_sleep, &client.handle()) {
             Ok(_timout) => {

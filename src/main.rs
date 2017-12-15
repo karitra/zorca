@@ -111,6 +111,7 @@ fn main() {
             let cls = Arc::clone(&cluster_for_subscribe);
             let cls1 = Arc::clone(&cluster_for_subscribe);
 
+            // TODO: Cocaine RT (unicorn) endpoints
             let work = subscription(
                 core.handle(),
                 &ctx_for_subscribe.config,

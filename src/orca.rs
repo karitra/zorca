@@ -23,8 +23,15 @@ pub struct AppState {
     state: String,
     workers: i64,
     state_version: i64,
-    about_state: String,
+    about_state: Option<String>,
+    state_description: Option<String>,
     time_stamp: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct InAppState {
+    profile: String,
+    workers: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -32,7 +39,7 @@ pub struct CommittedState {
     // mapping: app -> state
     state: HashMap<String, AppState>,
     version: i64,
-    timestamp: i64
+    timestamp: i64,
 }
 
 
@@ -40,11 +47,14 @@ pub struct CommittedState {
 pub type OrcasPod = HashMap<String, OrcaRecord>;
 pub type SyncedOrcasPod = RwLock<OrcasPod>;
 
+// pub type OrcasIncomingStates = HashMap<String, InAppState>;
+
 pub type Apps = HashMap<String, AppStat>;
 pub type SyncedApps = RwLock<Apps>;
 
 // TODO: support of int values (counters).
 pub type Metrics = HashMap<String, f64>;
+
 
 pub trait AppsTrait {
     fn update(&mut self, pod: &OrcasPod);
@@ -70,6 +80,11 @@ pub struct Orca {
 pub struct OrcaRecord {
     pub orca: Orca,
     pub update_timestamp: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OrcaInState {
+    pub incoming_state: HashMap<String, InAppState>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
