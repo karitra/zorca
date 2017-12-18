@@ -19,7 +19,10 @@ use std::str::FromStr;
 use std::time::{self, UNIX_EPOCH};
 use std::iter::Iterator;
 use std::net;
-use std::collections::HashMap;
+use std::collections::{
+    HashMap,
+    HashSet
+};
 
 use secure::make_ticket_service;
 use errors::CombinedError;
@@ -66,22 +69,39 @@ pub struct NetInfo {
     endpoints: Vec<Endpoint>
 }
 
+// TODO: generic collection
 trait ClusterInterface {
-    fn update(&mut self, nodes: Vec<UuidNodeInfo>);
+    fn update(&mut self, nodes: &[UuidNodeInfo]);
     fn hosts(&self) -> HashMap<String, NetInfo>;
+    fn remove_not_in(&mut self, nodes: &[UuidNodeInfo]);
 }
 
 impl ClusterInterface for Cluster {
-    fn update(&mut self, nodes: Vec<UuidNodeInfo>) {
-        // TODO: make defence against cluster flapping
-        self.clear();
-        self.reserve(nodes.len());
+    fn remove_not_in(&mut self, nodes: &[UuidNodeInfo]) {
+        let fresh_uuids = nodes
+            .iter()
+            .map(|&(ref uuid, _)| uuid.clone())
+            .collect::<HashSet<_>>();
 
-        for (uuid, info) in nodes {
-            if let Some(info) = info {
-                self.insert(uuid, info);
+        let present_uuids = self
+            .keys()
+            .map(|k| k.clone())
+            .collect::<HashSet<_>>();
+
+        for uuid in present_uuids.difference(&fresh_uuids) {
+            println!("removing from cluster node {}", uuid);
+            self.remove(uuid);
+        }
+    }
+
+    fn update(&mut self, nodes: &[UuidNodeInfo]) {
+        self.remove_not_in(nodes);
+
+        for &(ref uuid, ref info) in nodes {
+            if let &Some(ref info) = info {
+                self.entry(uuid.clone()).or_insert(info.clone());
             }
-        } // for
+        }
     }
 
     fn hosts(&self) -> HashMap<String, NetInfo> {
@@ -97,13 +117,13 @@ impl ClusterInterface for Cluster {
     }
 }
 
-
 fn make_auth_headers(header: Option<String>) -> Option<AuthHeaders>  {
     header.and_then(|hdr|
         Some(vec![ RawHeader::new("authorization".as_bytes(), hdr.into_bytes()) ])
     )
 }
 
+// TODO: subscribe to wide set of endpoints
 pub fn subscription<'a>(handle: Handle, config: &Config, path: &'a str, cluster: Arc<SyncedCluster>)
     -> Box<Future<Item=(), Error=CombinedError> + 'a>
 {
@@ -161,7 +181,7 @@ pub fn subscription<'a>(handle: Handle, config: &Config, path: &'a str, cluster:
             })
             .and_then(move |nodes| {
                 let mut cls = cluster.write().unwrap();
-                cls.update(nodes);
+                cls.update(&nodes);
                 Ok(())
             })
             .then(|result| match result {
