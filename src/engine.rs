@@ -21,7 +21,7 @@ use std::iter::Iterator;
 use std::net;
 use std::collections::{
     HashMap,
-    HashSet
+    BTreeSet
 };
 
 use secure::make_ticket_service;
@@ -81,12 +81,12 @@ impl ClusterInterface for Cluster {
         let fresh_uuids = nodes
             .iter()
             .map(|&(ref uuid, _)| uuid.clone())
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
 
         let present_uuids = self
             .keys()
             .map(|k| k.clone())
-            .collect::<HashSet<_>>();
+            .collect::<BTreeSet<_>>();
 
         for uuid in present_uuids.difference(&fresh_uuids) {
             println!("removing from cluster node {}", uuid);
