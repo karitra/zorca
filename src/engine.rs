@@ -1,4 +1,5 @@
 use cocaine::Service;
+use cocaine::service::Unicorn;
 use cocaine::hpack::RawHeader;
 
 use tokio_core::reactor::{Handle, Timeout};
@@ -34,14 +35,7 @@ use unicorn::{
     get_node
 };
 
-
 use orca;
-use orca::{
-    OrcaRecord,
-    SyncedOrcasPod,
-    DEFAULT_WEB_PORT
-};
-
 
 // Note: in case of massive cluster updates (score of machines was restarted),
 //       it could be quite massive subscription update rate, so channel queue size
@@ -52,7 +46,7 @@ const SUBSCRIBE_QUEUE_SIZE: usize = 1024;
 // TODO: Should be in config with reasonable defaults someday.
 const GATHER_INTERVAL_SECS: u64 = 120;
 const ONE_HOUR_IN_SECS: u64 = 1 * 60 * 60;
-
+const SPOILED_ORCA_EXPIRATION_SEC: u64 = ONE_HOUR_IN_SECS / 2;
 
 pub type SubscribeMessage = (i64, Vec<String>);
 
@@ -124,7 +118,7 @@ fn make_auth_headers(header: Option<String>) -> Option<AuthHeaders>  {
 }
 
 // TODO: subscribe to wide set of endpoints
-pub fn subscription<'a>(handle: Handle, config: &Config, path: &'a str, cluster: Arc<SyncedCluster>)
+pub fn subscription<'a>(unicorn: &'a Unicorn, handle: Handle, config: &Config, path: &'a str, cluster: Arc<SyncedCluster>)
     -> Box<Future<Item=(), Error=CombinedError> + 'a>
 {
     let proxy = make_ticket_service(Service::new("tvm", &handle), &config);
@@ -132,7 +126,6 @@ pub fn subscription<'a>(handle: Handle, config: &Config, path: &'a str, cluster:
 
     let (tx, rx) = mpsc::channel::<SubscribeMessage>(SUBSCRIBE_QUEUE_SIZE);
 
-    let subscribe_handle = handle.clone();
     let subscribe_path = String::from(path);
 
     let subscibe_future = proxy.borrow_mut().ticket_as_header()
@@ -140,7 +133,7 @@ pub fn subscription<'a>(handle: Handle, config: &Config, path: &'a str, cluster:
         .and_then(move |header| {
             println!("subscribing to path: {}", subscribe_path);
             kids_subscribe(
-                Service::new("unicorn", &subscribe_handle),
+                unicorn,
                 subscribe_path,
                 make_auth_headers(header),
                 tx
@@ -245,11 +238,13 @@ where
         return format!("{}/{}", api_ver, math)
     }
 
-    let info_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, "info");
+    let info_uri = ip6_uri_from_string(&endpoint.host_str(), orca::DEFAULT_WEB_PORT, "info");
 
     // api version could be taken from info handle, hardcoded for now
-    let state_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, &make_path("v1", "state"));
-    let metrics_uri = ip6_uri_from_string(&endpoint.host_str(), DEFAULT_WEB_PORT, &make_path("v1", "metrics?flatten"));
+    let state_uri = ip6_uri_from_string(&endpoint.host_str(), orca::DEFAULT_WEB_PORT, &make_path("v1", "state"));
+    let metrics_uri = ip6_uri_from_string(&endpoint.host_str(), orca::DEFAULT_WEB_PORT, &make_path("v1", "metrics?flatten"));
+    let dist_uri = ip6_uri_from_string(&endpoint.host_str(), orca::DEFAULT_WEB_PORT, &make_path("v1", "distribution"));
+    let incoming_uri = ip6_uri_from_string(&endpoint.host_str(), orca::DEFAULT_WEB_PORT, &make_path("v1", "incoming_state"));
 
     let info_future = future::result(info_uri)
         .map_err(CombinedError::UriParseError)
@@ -276,17 +271,44 @@ where
         .and_then(move |uri| get::<C, orca::Metrics>(client, uri))
         .or_else(|_| Ok(orca::Metrics::new()));
 
+    let dist_future = future::result(dist_uri)
+        .map_err(CombinedError::UriParseError)
+        .and_then(|uri| { // TODO: Debug clusure, remove
+            // println!("making distribution request {:?}", uri);
+            Ok(uri)
+        })
+        .and_then(move |uri| get::<C, orca::WorkersDistribution>(client, uri))
+        .or_else(|_| Ok(orca::WorkersDistribution::new()));
+
+    let incoming_future = future::result(incoming_uri)
+        .map_err(CombinedError::UriParseError)
+        .and_then(|uri| { // TODO: Debug clusure, remove
+            // println!("making distribution request {:?}", uri);
+            Ok(uri)
+        })
+        .and_then(move |uri| get::<C, orca::IncomingState>(client, uri))
+        .or_else(|_| Ok(orca::IncomingState::new()));
+
     let hostname = net_info.hostname.clone();
     let endpoint = endpoint.clone();
 
-    let request_result = info_future.join(state_future).join(metrics_future)
+    let request_result = info_future
+        .join(state_future)
+        .join(metrics_future)
+        .join(dist_future)
+        .join(incoming_future)
         .then(move |r| match r {
-            Ok(((info, committed_state), metrics)) => {
+            Ok(((((info, committed_state), metrics), distribution), incoming_state)) => {
+                let distribution = orca::make_workers_distribution(
+                        &incoming_state, &committed_state, &distribution);
+                let mismatched = orca::make_mismatched_list(&distribution);
                 let orca = orca::Orca {
                     endpoints: vec![ endpoint ],
                     committed_state,
                     metrics,
                     info,
+                    distribution,
+                    mismatched
                 };
 
                 Ok((hostname, orca))
@@ -306,7 +328,7 @@ fn dump_cls(cls: &Cluster) {
 }
 
 
-pub fn gather<'a,C>(client: &'a hyper::client::Client<C>, cluster: Arc<SyncedCluster>, orcas: Arc<SyncedOrcasPod>)
+pub fn gather<'a,C>(client: &'a hyper::client::Client<C>, cluster: Arc<SyncedCluster>, orcas: Arc<orca::SyncedOrcasPod>)
     -> Box<Future<Item=(), Error=CombinedError> + 'a>
 where
     C: hyper::client::Connect + 'a
@@ -370,8 +392,7 @@ where
         .and_then(move |responses| {
 
             let now = time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-            let span = time::Duration::from_secs(ONE_HOUR_IN_SECS);
-
+            let span = time::Duration::from_secs(SPOILED_ORCA_EXPIRATION_SEC);
             { // Remove old records.
                 let mut orcas = orcas.write().unwrap();
                 orcas.retain(|_host, orca|
@@ -382,7 +403,7 @@ where
                 let mut orcas = orcas.write().unwrap();
                 for val in responses {
                     if let Some((host, orca)) = val {
-                        let record = OrcaRecord { orca, update_timestamp: now.as_secs() };
+                        let record = orca::OrcaRecord { orca, update_timestamp: now.as_secs() };
                         orcas.insert(host, record);
                     }
                 }

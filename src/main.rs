@@ -109,7 +109,6 @@ fn main() {
 
     std::thread::spawn(move || {
 
-
         loop {
             let mut core = Core::new().unwrap();
             let unicorn = Unicorn::new(Service::new("unicorn", &core.handle()));
