@@ -77,19 +77,18 @@ pub fn read_from_storage(collection: &str, key: &str) -> Option<String> {
 }
 
 #[allow(dead_code)]
-pub fn unicorn_kids_subscribe<H>(
-    service: Service,
+pub fn unicorn_kids_subscribe<'a, H>(
+    unicorn: &'a Unicorn,
     path: &str,
     headers: H,
     sender: UnboundedSender<SubscribeMessage>)
-    -> Box<Future<Item=(), Error=CombinedError>>
+    -> Box<Future<Item=(), Error=CombinedError> + 'a>
 where
-    H: Into<Option<Vec<RawHeader>>> + 'static,
+    H: Into<Option<Vec<RawHeader>>> + 'a,
 {
     println!("subscribing to path {}", path);
 
-    let subscription = Unicorn::new(service)
-        .children_subscribe(path, headers)
+    let subscription = unicorn.children_subscribe(path, headers)
         .map_err(CombinedError::CocaineError)
         .and_then(move |(tx, stream)| {
             println!("subscribed!");

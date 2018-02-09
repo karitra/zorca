@@ -30,6 +30,9 @@ use tokio_core::net::TcpListener;
 
 use hyper::server::Http;
 
+use cocaine::Service;
+use cocaine::service::Unicorn;
+
 mod samples;
 mod config;
 mod secure;
@@ -105,14 +108,18 @@ fn main() {
     let cluster_for_subscribe = Arc::clone(&cluster);
 
     std::thread::spawn(move || {
+
+
         loop {
             let mut core = Core::new().unwrap();
+            let unicorn = Unicorn::new(Service::new("unicorn", &core.handle()));
 
             let cls = Arc::clone(&cluster_for_subscribe);
             let cls1 = Arc::clone(&cluster_for_subscribe);
 
             // TODO: Cocaine RT (unicorn) endpoints
             let work = subscription(
+                &unicorn,
                 core.handle(),
                 &ctx_for_subscribe.config,
                 ctx_for_subscribe.get_listen_path(),

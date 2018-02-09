@@ -13,24 +13,22 @@ use errors::CombinedError;
 use engine::SubscribeMessage;
 
 
-pub fn kids_subscribe<'a, H, Q>(service: Service, path: String, headers: H, sender: Q)
+pub fn kids_subscribe<'a, H, Q>(unicorn: &'a Unicorn, path: String, headers: H, sender: Q)
     -> Box<Future<Item=(), Error=CombinedError> + 'a>
 where
     H: Into<Option<Vec<RawHeader>>> + 'a,
     Q: Sink<SinkItem=SubscribeMessage, SinkError=SendError<SubscribeMessage>> + 'a
 {
-    let subscription =
-        Unicorn::new(service)
-            .children_subscribe(&path, headers)
-            .map_err(CombinedError::CocaineError)
-            .and_then(move |(tx, stream)| {
-                sender.sink_map_err(CombinedError::QueueSendError)
-                    .send_all(stream)
-                    .and_then(|_| {
-                        drop(tx);
-                        Ok(())
-                    })
-            });
+    let subscription = unicorn.children_subscribe(&path, headers)
+        .map_err(CombinedError::CocaineError)
+        .and_then(move |(tx, stream)| {
+            sender.sink_map_err(CombinedError::QueueSendError)
+                .send_all(stream)
+                .and_then(move |_| {
+                    drop(tx);
+                    Ok(())
+                })
+        });
 
     Box::new(subscription)
 }
