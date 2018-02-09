@@ -1,6 +1,6 @@
 [package]
 name = "zorca"
-version = "0.1.2"
+version = "0.1.3"
 description = "Cocaine orchestrator (aka Orca) monitoring service"
 authors = ["Alex Karev <karev.alexandre@gmail.com>"]
 
