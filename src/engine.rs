@@ -44,7 +44,7 @@ use orca;
 const SUBSCRIBE_QUEUE_SIZE: usize = 1024;
 
 // TODO: Should be in config with reasonable defaults someday.
-const GATHER_INTERVAL_SECS: u64 = 120;
+const GATHER_INTERVAL_SECS: u64 = 30;
 const ONE_HOUR_IN_SECS: u64 = 1 * 60 * 60;
 const SPOILED_ORCA_EXPIRATION_SEC: u64 = ONE_HOUR_IN_SECS / 2;
 
@@ -342,38 +342,38 @@ where
     }
 
     let hosts = cluster.read().unwrap().hosts();
-    let mut gather_strides = Vec::with_capacity(cluster.read().unwrap().len());
-
     println!("cluster size is {}", hosts.len());
 
-    for (num, (uuid, net)) in hosts.iter().enumerate() {
+    let mut gather_strides = Vec::with_capacity(cluster.read().unwrap().len());
+
+    for (num, (uuid, net)) in hosts.into_iter().enumerate() {
 
         let to_pause = num as u64 % GATHER_INTERVAL_SECS;
         let to_sleep = time::Duration::new(to_pause, 0);
 
-        let gather_bootstrap = match Timeout::new(to_sleep, &client.handle()) {
-            Ok(_timout) => {
+        let gather_bootstrap = Timeout::new(to_sleep, &client.handle());
+        if let Err(e) = gather_bootstrap {
+            return Box::new(future::err(CombinedError::IOError(e)));
+        }
+
+        let gather_bootstrap = gather_bootstrap.unwrap()
+            .map_err(CombinedError::IOError)
+            .and_then(move |_| {
                 let eps_v6: Vec<_> = net.endpoints.iter().filter(|net| is_ipv6(net)).collect();
 
-                // println!("uuid {}", uuid);
+                // println!("making request for uuid {:?} {:?}", to_sleep, uuid);
 
                 //
                 // TODO: first address taken (if any), but should we peek a random one?
                 //
                 match eps_v6.first() {
-                    Some(ref ep) => make_requests_v1(client, (**ep).clone(), net),
+                    Some(ref ep) => make_requests_v1(client, (**ep).clone(), &net),
                     None => {
                         let error_message = format!("can't find ip6 address for uuid {} within host {:?}", uuid, net);
                         Box::new(future::err(CombinedError::Other(error_message)))
                     }
                 }
-            },
-
-            // Propogate timeout error as a future.
-            Err(e) => Box::new(future::err(CombinedError::IOError(e)))
-        };
-
-        let completion = gather_bootstrap
+            })
             .then(|r| match r {
                 Ok(r) => Ok(Some(r)),
                 //
@@ -385,8 +385,8 @@ where
                 }
             });
 
-        gather_strides.push(completion);
-    }
+        gather_strides.push(gather_bootstrap);
+    } // for (num, (uuid, net))
 
     let result = future::join_all(gather_strides)
         .and_then(move |responses| {

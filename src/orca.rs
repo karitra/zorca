@@ -151,6 +151,7 @@ impl AppStat {
 }
 
 impl AppsTrait for Apps {
+
     fn update(&mut self, pod: &OrcasPod) {
         self.clear();
 
