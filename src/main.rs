@@ -55,6 +55,7 @@ use orca::{
     SyncedApps,
     SyncedOrcasPod,
     OrcasPod,
+    AppsFilterType,
     AppsTrait,
 };
 
@@ -103,6 +104,7 @@ fn main() {
     let cluster = Arc::new(SyncedCluster::new(Cluster::new()));
     let orcas = Arc::new(SyncedOrcasPod::new(OrcasPod::new()));
     let apps = Arc::new(SyncedApps::new(orca::Apps::new()));
+    let apps_mismatched = Arc::new(SyncedApps::new(orca::Apps::new()));
 
     let ctx_for_subscribe = Arc::clone(&context);
     let cluster_for_subscribe = Arc::clone(&cluster);
@@ -145,6 +147,7 @@ fn main() {
 
     let orcas_for_gather = Arc::clone(&orcas);
     let apps_for_gather = Arc::clone(&apps);
+    let apps_mismatched_for_gather = Arc::clone(&apps_mismatched);
 
     std::thread::spawn(move || {
         loop {
@@ -167,9 +170,8 @@ fn main() {
 
             {   // Update apps stat.
                 let orcas = orcas_for_gather.read().unwrap();
-                let mut apps = apps_for_gather.write().unwrap();
-
-                apps.update(&orcas);
+                apps_for_gather.write().unwrap().update(&orcas, AppsFilterType::GenerateAll);
+                apps_mismatched_for_gather.write().unwrap().update(&orcas, AppsFilterType::GenerateMismatch);
             }
 
             let len = apps_for_gather.read().unwrap().len();
@@ -185,6 +187,7 @@ fn main() {
         cluster: Arc::clone(&cluster),
         orcas: Arc::clone(&orcas),
         apps: Arc::clone(&apps),
+        apps_mismatched: Arc::clone(&apps_mismatched),
         self_info
     };
 

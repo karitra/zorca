@@ -27,7 +27,7 @@ use std::time::{self, UNIX_EPOCH};
 use engine::SyncedCluster;
 use orca::{
     SyncedOrcasPod,
-    SyncedApps
+    SyncedApps,
 };
 
 
@@ -46,7 +46,7 @@ pub struct Model {
     pub cluster: Arc<SyncedCluster>,
     pub orcas: Arc<SyncedOrcasPod>,
     pub apps: Arc<SyncedApps>,
-
+    pub apps_mismatched: Arc<SyncedApps>,
     pub self_info: SelfInfo,
 }
 
@@ -185,6 +185,7 @@ impl Service for WebApi {
             // Basic api implementation.
             (&Method::Get, Route::Api(ver, func)) => match (ver, func) {
                 (API_V1, "apps")    => as_json_locked(self.model.apps.as_ref()),
+                (API_V1, "diffs")   => as_json_locked(self.model.apps_mismatched.as_ref()),
                 (API_V1, "cluster") => as_json_locked(self.model.cluster.as_ref()),
                 (API_V1, "orcas") | (API_V1, "pod")
                                     => as_json_locked(self.model.orcas.as_ref()),

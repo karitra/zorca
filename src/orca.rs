@@ -11,6 +11,10 @@ pub const DEFAULT_WEB_PORT: u16 = 8877;
 
 pub const STARTED_STATE: &str = "STARTED";
 
+pub enum AppsFilterType {
+    GenerateMismatch,
+    GenerateAll,
+}
 
 #[allow(dead_code)]
 pub enum WebHandler {
@@ -75,7 +79,7 @@ pub type Metrics = HashMap<String, f64>;
 
 
 pub trait AppsTrait {
-    fn update(&mut self, pod: &OrcasPod);
+    fn update(&mut self, pod: &OrcasPod, mismatched: AppsFilterType);
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -108,6 +112,10 @@ impl WorkersCount {
 
     fn nonempty(&self) -> bool {
         ! (self.input == 0 && self.output == 0 && self.runtime == 0)
+    }
+
+    fn has_mismatch(&self) -> bool {
+        self.mismatch_inout || self.mismatch_runtime
     }
 }
 
@@ -152,17 +160,21 @@ impl AppStat {
 
 impl AppsTrait for Apps {
 
-    fn update(&mut self, pod: &OrcasPod) {
+    fn update(&mut self, pod: &OrcasPod, mismatched: AppsFilterType) {
         self.clear();
 
         for (host, orca) in pod {
             for (app, dist) in orca.orca.distribution.iter()
-                .filter(|&(_, dist)| dist.nonempty()) {
+                .filter(|&(_, dist)| match mismatched {
+                    AppsFilterType::GenerateAll => dist.nonempty(),
+                    AppsFilterType::GenerateMismatch => dist.has_mismatch()
+                })
+            {
                     let record = self.entry(app.clone()).or_insert(AppStat::new());
                     record.hosts.insert(host.clone(), dist.clone());
-            }
-        }
-    }
+            } // for (app, dist)
+        } // for (host, orca)
+    } // update
 }
 
 pub fn make_workers_distribution(
