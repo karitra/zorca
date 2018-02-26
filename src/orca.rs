@@ -119,6 +119,18 @@ impl WorkersCount {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ControlFilter {
+    apply_control: bool,
+    white_list: Vec<String>,
+}
+
+impl ControlFilter {
+    pub fn new() -> ControlFilter {
+        ControlFilter{ apply_control: false, white_list: Vec::new() }
+    }
+}
+
 pub type Distribution = HashMap<String, WorkersCount>;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -127,6 +139,7 @@ pub struct Orca {
     pub info: Info,
     pub metrics: Metrics,
     pub mismatched: Distribution,
+    pub filter: ControlFilter,
     #[serde(skip_serializing)]
     pub distribution: Distribution,
     #[serde(skip_serializing)]

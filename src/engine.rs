@@ -293,22 +293,21 @@ where
     let endpoint = endpoint.clone();
 
     let request_result = info_future
-        .join(state_future)
-        .join(metrics_future)
-        .join(dist_future)
-        .join(incoming_future)
+        .join5(state_future, metrics_future, dist_future, incoming_future)
         .then(move |r| match r {
-            Ok(((((info, committed_state), metrics), distribution), incoming_state)) => {
+            Ok((info, committed_state, metrics, distribution, incoming_state)) => {
                 let distribution = orca::make_workers_distribution(
                         &incoming_state, &committed_state, &distribution);
                 let mismatched = orca::make_mismatched_list(&distribution);
+
                 let orca = orca::Orca {
                     endpoints: vec![ endpoint ],
-                    committed_state,
-                    metrics,
                     info,
+                    metrics,
+                    mismatched,
+                    filter: orca::ControlFilter::new(),
                     distribution,
-                    mismatched
+                    committed_state,
                 };
 
                 Ok((hostname, orca))
