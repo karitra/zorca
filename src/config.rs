@@ -8,6 +8,9 @@ use yaml_rust::{Yaml, YamlLoader};
 use cocaine::service::tvm::Grant;
 
 
+pub const GATHER_INTERVAL_SECS: u64 = 60;
+
+
 pub const CONFIG_FILES: &[&'static str] = &[
     "/etc/cocaine/.cocaine/tools.yml",
     "/etc/cocaine/zorca.toml",
@@ -18,6 +21,7 @@ pub const CONFIG_FILES: &[&'static str] = &[
 
 #[derive(Debug)]
 pub struct Config {
+    pub gather_interval: u64,
     pub ticket_expire_sec: Option<i64>,
     pub secure: Option<Secure>,
 }
@@ -57,6 +61,7 @@ fn yaml_from_file(path: &str) -> Option<Vec<Yaml>> {
 impl Config {
     fn new_with_defaults() -> Config {
         Config{
+            gather_interval: GATHER_INTERVAL_SECS,
             ticket_expire_sec: Some(600),
             secure: None
         }

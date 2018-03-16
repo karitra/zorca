@@ -43,7 +43,7 @@ mod orca;
 mod resources;
 mod web;
 
-use config::Config;
+
 use engine::{
     Cluster,
     SyncedCluster,
@@ -68,8 +68,9 @@ const SUSPEND_DURATION_SEC: u64 = 10;
 const POLL_DURATION_SEC: u64 = 10;
 
 
+// TODO: make separate inteface
 struct Context<'a> {
-    config: Config,
+    config: config::Config,
     options: ArgMatches<'a>
 }
 
@@ -93,9 +94,25 @@ fn main() {
             .short("d")
             .long("dummy")
             .help("use dummy host data for testing and debuging"))
+        .arg(Arg::with_name("gather_interval")
+            .short("i")
+            .long("interval")
+            .takes_value(true)
+            .help("orca stats gather interval"))
         .get_matches();
 
-    let config = Config::new_from_default_files();
+    //
+    // Make setup and config processing
+    //
+    let mut config = config::Config::new_from_default_files();
+    config.gather_interval = value_t!(options, "gather_interval", u64)
+        .unwrap_or(config::GATHER_INTERVAL_SECS);
+
+    if config.gather_interval == 0 {
+        config.gather_interval = config::GATHER_INTERVAL_SECS;
+        println!("gather_interval can't be zero, reset to {}", config.gather_interval);
+    }
+
     let context = Arc::new(Context{config, options});
 
     //
@@ -145,11 +162,16 @@ fn main() {
         false => Arc::clone(&cluster)
     };
 
+    let ctx_for_gather = Arc::clone(&context);
     let orcas_for_gather = Arc::clone(&orcas);
     let apps_for_gather = Arc::clone(&apps);
     let apps_mismatched_for_gather = Arc::clone(&apps_mismatched);
 
     std::thread::spawn(move || {
+
+        println!("gather interval: {}", ctx_for_gather.config.gather_interval);
+        let gather_interval = ctx_for_gather.config.gather_interval;
+
         loop {
             let mut core = Core::new().unwrap();
             let client = hyper::client::Client::new(&core.handle());
@@ -157,7 +179,8 @@ fn main() {
             let work = gather(
                 &client,
                 Arc::clone(&cluster_for_gather),
-                Arc::clone(&orcas_for_gather)
+                Arc::clone(&orcas_for_gather),
+                gather_interval,
             );
 
             match core.run(work) {

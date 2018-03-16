@@ -43,8 +43,6 @@ use orca;
 //       will go nuts and flood ecosystem with subscriptions.
 const SUBSCRIBE_QUEUE_SIZE: usize = 1024;
 
-// TODO: Should be in config with reasonable defaults someday.
-const GATHER_INTERVAL_SECS: u64 = 30;
 const ONE_HOUR_IN_SECS: u64 = 1 * 60 * 60;
 const SPOILED_ORCA_EXPIRATION_SEC: u64 = ONE_HOUR_IN_SECS / 2;
 
@@ -327,12 +325,11 @@ fn dump_cls(cls: &Cluster) {
 }
 
 
-pub fn gather<'a,C>(client: &'a hyper::client::Client<C>, cluster: Arc<SyncedCluster>, orcas: Arc<orca::SyncedOrcasPod>)
+pub fn gather<'a,C>(client: &'a hyper::client::Client<C>, cluster: Arc<SyncedCluster>, orcas: Arc<orca::SyncedOrcasPod>, gather_interval: u64)
     -> Box<Future<Item=(), Error=CombinedError> + 'a>
 where
     C: hyper::client::Connect + 'a
 {
-
     fn is_ipv6(addr: &Endpoint) -> bool {
         match net::IpAddr::from_str(&addr.host_str()) {
             Ok(addr) => addr.is_ipv6(),
@@ -341,13 +338,14 @@ where
     }
 
     let hosts = cluster.read().unwrap().hosts();
+
     println!("cluster size is {}", hosts.len());
 
     let mut gather_strides = Vec::with_capacity(cluster.read().unwrap().len());
 
     for (num, (uuid, net)) in hosts.into_iter().enumerate() {
 
-        let to_pause = num as u64 % GATHER_INTERVAL_SECS;
+        let to_pause = num as u64 % gather_interval;
         let to_sleep = time::Duration::new(to_pause, 0);
 
         let gather_bootstrap = Timeout::new(to_sleep, &client.handle());
